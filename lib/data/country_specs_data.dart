@@ -219,7 +219,7 @@ class CountrySpecsData {
       id: 'DE_PASSPORT',
       countryCode: 'DE',
       countryName: 'Germany',
-      documentTitle: 'Reisepass & Personalausweis',
+      documentTitle: 'Passport, ID, Visa & Führerschein',
       flagEmoji: '🇩🇪',
       widthMm: 35.0,
       heightMm: 45.0,
@@ -232,7 +232,7 @@ class CountrySpecsData {
       backgroundName: 'Heller Hintergrund',
       formattedDimensions: '35 × 45 mm',
       standardTag: 'BUNDESDRUCKEREI',
-      notes: 'Biometrisches Passbild nach Bundesdruckerei-Fotomatrix.',
+      notes: 'Bundesdruckerei matrix. Note: Since May 2025, German Bürgerämter require digital terminal/cloud QR for new German Reisepass/Ausweis. Printed photos remain valid for Driving License (Führerschein), Health Card (eGK), Foreign Visas (US/UK/India), and expat passport renewals.',
     ),
 
     // 12. United Arab Emirates

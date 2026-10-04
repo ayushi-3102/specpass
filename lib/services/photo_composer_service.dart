@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_selfie_segmentation/google_mlkit_selfie_segmentation.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../models/country_spec.dart';
@@ -48,17 +51,56 @@ class PhotoComposerService {
     double contrast = 1.0,
     bool isBabyMode = false,
   }) async {
+    List<double>? neuralMask;
+    int? maskW;
+    int? maskH;
+
+    final targetHex = overrideBgHex ?? spec.backgroundColorHex;
+    final bool isOriginalBg = targetHex.toLowerCase() == 'original' || sensitivity <= 0.05;
+
+    // Run on-device Neural AI Segmentation (Google ML Kit) when background replacement is requested
+    if (!isOriginalBg) {
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/ml_seg_${DateTime.now().microsecondsSinceEpoch}.jpg');
+        await tempFile.writeAsBytes(rawBytes);
+
+        final inputImage = InputImage.fromFilePath(tempFile.path);
+        final segmenter = SelfieSegmenter(
+          mode: SegmenterMode.single,
+          enableRawSizeMask: true,
+        );
+
+        final mask = await segmenter.processImage(inputImage);
+        await segmenter.close();
+        if (tempFile.existsSync()) {
+          await tempFile.delete();
+        }
+
+        if (mask != null) {
+          neuralMask = mask.confidences;
+          maskW = mask.width;
+          maskH = mask.height;
+        }
+      } catch (_) {
+        // Gracefully falls back to color-decontaminated CPU segmentation in headless/test environments
+      }
+    }
+
     return compute(_processInBackground, {
       'bytes': rawBytes,
       'specId': spec.id,
       'widthMm': spec.widthMm,
       'heightMm': spec.heightMm,
       'targetDpi': spec.targetDpi,
-      'bgHex': overrideBgHex ?? spec.backgroundColorHex,
+      'bgHex': targetHex,
       'sensitivity': sensitivity,
       'brightness': brightness,
       'contrast': contrast,
       'isBabyMode': isBabyMode,
+      'neuralMask': neuralMask,
+      'maskW': maskW,
+      'maskH': maskH,
     });
   }
 
@@ -137,16 +179,39 @@ class PhotoComposerService {
 
     // -------------------------------------------------------------------------
     // BIOMETRIC BACKGROUND SEGMENTATION & REPLACEMENT
-    // Isolates the person from the background wall with full skin & hair protection
+    // 1. If 'original' wall requested -> keep real wall untouched
+    // 2. If Neural AI Mask available -> apply Google ML Kit semantic segmentation
+    // 3. Otherwise -> apply color-decontaminated skin-safe flood fill
     // -------------------------------------------------------------------------
-    final img.Image finishedSingle = isOriginalBg
-        ? resizedSingle
-        : _removeBackgroundAndReplace(
-            source: resizedSingle,
-            targetBgColor: bgPixel,
-            sensitivity: sensitivity,
-            isBabyMode: isBabyMode,
-          );
+    final List<double>? neuralMask = params['neuralMask'] as List<double>?;
+    final int? maskW = params['maskW'] as int?;
+    final int? maskH = params['maskH'] as int?;
+
+    final img.Image finishedSingle;
+    if (isOriginalBg) {
+      finishedSingle = resizedSingle;
+    } else if (neuralMask != null && maskW != null && maskH != null) {
+      finishedSingle = _applyNeuralMaskAndStudioLighting(
+        source: resizedSingle,
+        confidences: neuralMask,
+        maskWidth: maskW,
+        maskHeight: maskH,
+        targetBgColor: bgPixel,
+        cropX: cropX,
+        cropY: cropY,
+        cropW: cropW,
+        cropH: cropH,
+        originalW: oriented.width,
+        originalH: oriented.height,
+      );
+    } else {
+      finishedSingle = _removeBackgroundAndReplace(
+        source: resizedSingle,
+        targetBgColor: bgPixel,
+        sensitivity: sensitivity,
+        isBabyMode: isBabyMode,
+      );
+    }
 
     final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
 
@@ -200,6 +265,65 @@ class PhotoComposerService {
       contrast: contrast,
       isBabyMode: isBabyMode,
     );
+  }
+
+  /// Composites the subject onto the official studio background using the Neural AI mask
+  /// with sub-pixel feathering, studio lighting falloff, and exact coordinate mapping.
+  static img.Image _applyNeuralMaskAndStudioLighting({
+    required img.Image source,
+    required List<double> confidences,
+    required int maskWidth,
+    required int maskHeight,
+    required img.Color targetBgColor,
+    required int cropX,
+    required int cropY,
+    required int cropW,
+    required int cropH,
+    required int originalW,
+    required int originalH,
+  }) {
+    final int width = source.width;
+    final int height = source.height;
+    final img.Image result = img.Image(width: width, height: height, numChannels: 3);
+
+    for (int y = 0; y < height; y++) {
+      // Gentle studio lighting falloff (simulates real studio flash umbrella)
+      final double studioGrad = 1.0 - (y / height) * 0.025;
+      final int studioR = (targetBgColor.r * studioGrad).round().clamp(0, 255);
+      final int studioG = (targetBgColor.g * studioGrad).round().clamp(0, 255);
+      final int studioB = (targetBgColor.b * studioGrad).round().clamp(0, 255);
+
+      final double normY = y / height;
+      final double origY = cropY + normY * cropH;
+      final int my = ((origY / originalH) * maskHeight).floor().clamp(0, maskHeight - 1);
+
+      for (int x = 0; x < width; x++) {
+        final double normX = x / width;
+        final double origX = cropX + normX * cropW;
+        final int mx = ((origX / originalW) * maskWidth).floor().clamp(0, maskWidth - 1);
+
+        final double confidence = confidences[my * maskWidth + mx];
+
+        if (confidence <= 0.08) {
+          // 100% Studio background
+          result.setPixelRgb(x, y, studioR, studioG, studioB);
+        } else if (confidence >= 0.92) {
+          // 100% Human subject
+          result.setPixel(x, y, source.getPixel(x, y));
+        } else {
+          // Sub-pixel optical feathering on hair & clothing edges
+          final double fgAlpha = (confidence - 0.08) / (0.92 - 0.08);
+          final double bgAlpha = 1.0 - fgAlpha;
+          final p = source.getPixel(x, y);
+          final int r = (p.r * fgAlpha + studioR * bgAlpha).round().clamp(0, 255);
+          final int g = (p.g * fgAlpha + studioG * bgAlpha).round().clamp(0, 255);
+          final int b = (p.b * fgAlpha + studioB * bgAlpha).round().clamp(0, 255);
+          result.setPixelRgb(x, y, r, g, b);
+        }
+      }
+    }
+
+    return result;
   }
 
   /// Checks whether a given RGB pixel is human skin tone using ITU-R BT.601 chrominance
