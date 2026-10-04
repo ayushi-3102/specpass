@@ -39,10 +39,10 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   bool _isBabyMode = false;
 
   final List<Map<String, String>> _bgOptions = [
-    {'name': 'Original Wall', 'hex': 'original', 'subtitle': 'Natural & Authentic (Recommended)'},
-    {'name': 'Studio Off-White', 'hex': '#F8F9FA', 'subtitle': 'Soft Studio Lighting'},
-    {'name': 'Light Gray', 'hex': '#EDEDF0', 'subtitle': 'ICAO, UK, Germany'},
-    {'name': 'Studio White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
+    {'name': 'Pure White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India (Official)'},
+    {'name': 'Studio Off-White', 'hex': '#F8F9FA', 'subtitle': 'Soft Studio Lighting (ICAO)'},
+    {'name': 'Light Gray', 'hex': '#EDEDF0', 'subtitle': 'UK, Germany Standard'},
+    {'name': 'Original Wall', 'hex': 'original', 'subtitle': 'Preserve Real Wall'},
     {'name': 'Sky Blue', 'hex': '#7BD0FF', 'subtitle': 'China, Malaysia'},
   ];
 

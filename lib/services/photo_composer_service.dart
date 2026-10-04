@@ -27,7 +27,7 @@ class ProcessedPhotoPackage {
     required this.printSheetWidth,
     required this.printSheetHeight,
     required this.photosOnSheet,
-    this.activeBgHex = 'original',
+    this.activeBgHex = '#FFFFFF',
     this.sensitivity = 1.0,
     this.brightness = 0.0,
     this.contrast = 1.0,
@@ -54,7 +54,7 @@ class PhotoComposerService {
       'widthMm': spec.widthMm,
       'heightMm': spec.heightMm,
       'targetDpi': spec.targetDpi,
-      'bgHex': overrideBgHex ?? 'original',
+      'bgHex': overrideBgHex ?? spec.backgroundColorHex,
       'sensitivity': sensitivity,
       'brightness': brightness,
       'contrast': contrast,
@@ -67,7 +67,7 @@ class PhotoComposerService {
     final double widthMm = params['widthMm'];
     final double heightMm = params['heightMm'];
     final int dpi = params['targetDpi'] ?? 300;
-    final String bgHex = params['bgHex'] ?? 'original';
+    final String bgHex = params['bgHex'] ?? '#FFFFFF';
 
     final img.Image? decoded = img.decodeImage(rawBytes);
 
