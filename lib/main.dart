@@ -34,7 +34,9 @@ void main() async {
 }
 
 class SpecPassApp extends StatelessWidget {
-  const SpecPassApp({super.key});
+  final Widget? home;
+
+  const SpecPassApp({super.key, this.home});
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +44,7 @@ class SpecPassApp extends StatelessWidget {
       title: 'SpecPass',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const AnimatedOpeningScreen(),
+      home: home ?? const AnimatedOpeningScreen(),
     );
   }
 }

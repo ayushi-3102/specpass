@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,7 +31,8 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   late ProcessedPhotoPackage _currentPackage;
   late String _activeBgHex;
   bool _isRecomputing = false;
-  bool _showOriginal = false;
+  int _viewMode = 0; // 0 = Split Slider, 1 = Biometric Only, 2 = Original Only
+  double _splitRatio = 0.50; // Draggable slider position (0.0 to 1.0)
   double _sensitivity = 1.0;
   double _brightness = 0.0;
   double _contrast = 1.0;
@@ -81,7 +83,6 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
       _contrast = targetContrast;
       _formalAttire = targetAttire;
       _isBabyMode = targetBaby;
-      _showOriginal = false;
     });
 
     try {
@@ -138,7 +139,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 20),
         child: Column(
           children: [
-            // Before / After View Toggle
+            // 3-Mode View Toggle: Split Slider, Biometric Result, Raw Original
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(4),
@@ -150,80 +151,42 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: () {
-                      if (_showOriginal) {
-                        HapticFeedback.selectionClick();
-                        setState(() => _showOriginal = false);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: !_showOriginal ? AppTheme.primary : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.auto_fix_high, size: 14, color: !_showOriginal ? Colors.white : AppTheme.outline),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Biometric Compliant',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: !_showOriginal ? Colors.white : AppTheme.outline,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  _buildModeToggleButton(
+                    modeIndex: 0,
+                    icon: Icons.compare,
+                    label: 'Split Wipe',
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      if (!_showOriginal) {
-                        HapticFeedback.selectionClick();
-                        setState(() => _showOriginal = true);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _showOriginal ? AppTheme.surfaceContainerHigh : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.photo, size: 14, color: _showOriginal ? AppTheme.onSurface : AppTheme.outline),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Original Shot',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: _showOriginal ? AppTheme.onSurface : AppTheme.outline,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  _buildModeToggleButton(
+                    modeIndex: 1,
+                    icon: Icons.auto_fix_high,
+                    label: 'Biometric',
+                  ),
+                  _buildModeToggleButton(
+                    modeIndex: 2,
+                    icon: Icons.photo,
+                    label: 'Original',
                   ),
                 ],
               ),
             ),
 
-            // Centered Photo Preview with Biometric Calipers
+            // Draggable Before/After Split Slider or Dedicated View
             Center(
               child: Container(
                 width: 240,
                 height: 240 / widget.spec.aspectRatio,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppTheme.outlineVariant, width: 2),
+                  border: Border.all(
+                    color: _viewMode == 0 ? AppTheme.secondary.withValues(alpha: 0.6) : AppTheme.outlineVariant,
+                    width: 2,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 16,
+                      color: _viewMode == 0
+                          ? AppTheme.secondary.withValues(alpha: 0.15)
+                          : Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 18,
                       offset: const Offset(0, 4),
                     ),
                   ],
@@ -233,37 +196,214 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.memory(
-                        _showOriginal ? widget.rawBytes : _currentPackage.singlePhotoBytes,
-                        fit: BoxFit.cover,
-                      ),
-                      if (_showBiometricOverlay && !_showOriginal) _buildBiometricOverlay(),
-                      
-                      // Bottom status pill
-                      Positioned(
-                        bottom: 8,
-                        left: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.75),
-                            borderRadius: BorderRadius.circular(12),
+                      if (_viewMode == 0) ...[
+                        // Split Wipe Mode:
+                        // Bottom Layer: Biometric Compliant Output
+                        Image.memory(
+                          _currentPackage.singlePhotoBytes,
+                          fit: BoxFit.cover,
+                        ),
+                        if (_showBiometricOverlay) _buildBiometricOverlay(),
+
+                        // Top Layer: Raw Capture clipped to left side by _splitRatio
+                        ClipRect(
+                          clipper: _SplitRectClipper(splitRatio: _splitRatio),
+                          child: Image.memory(
+                            widget.rawBytes,
+                            fit: BoxFit.cover,
                           ),
-                          child: Text(
-                            _showOriginal
-                                ? 'RAW CAPTURE (UNEDITED)'
-                                : 'SOLID WHITE BG REPLACED • ICAO 9303',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontFamily: 'JetBrains Mono',
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: _showOriginal ? Colors.amber : AppTheme.tertiary,
+                        ),
+
+                        // Glowing Neon Divider Line
+                        Positioned(
+                          left: (240 * _splitRatio) - 1.5,
+                          top: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 3,
+                            decoration: BoxDecoration(
+                              color: AppTheme.secondary,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.secondary.withValues(alpha: 0.8),
+                                  blurRadius: 6,
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ),
+
+                        // Interactive Slider Touch Knob
+                        Positioned(
+                          left: (240 * _splitRatio) - 16,
+                          top: ((240 / widget.spec.aspectRatio) / 2) - 16,
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceContainerHighest,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppTheme.secondary, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.compare_arrows,
+                                size: 18,
+                                color: AppTheme.secondary,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Interactive Drag & Tap Detector
+                        GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              _splitRatio = (details.localPosition.dx / 240).clamp(0.04, 0.96);
+                            });
+                          },
+                          onTapDown: (details) {
+                            HapticFeedback.selectionClick();
+                            setState(() {
+                              _splitRatio = (details.localPosition.dx / 240).clamp(0.04, 0.96);
+                            });
+                          },
+                        ),
+
+                        // Top Labels: Raw vs Biometric
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'RAW',
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'BIOMETRIC',
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.secondary,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Bottom Guidance Pill
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          right: 8,
+                          child: IgnorePointer(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                '↔ DRAG SLIDER TO INSPECT RETOUCHING',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontFamily: 'JetBrains Mono',
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.secondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ] else if (_viewMode == 1) ...[
+                        // Biometric Output Only
+                        Image.memory(
+                          _currentPackage.singlePhotoBytes,
+                          fit: BoxFit.cover,
+                        ),
+                        if (_showBiometricOverlay) _buildBiometricOverlay(),
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.75),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'SOLID WHITE BG REPLACED • ICAO 9303',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.tertiary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        // Original Raw Capture Only
+                        Image.memory(
+                          widget.rawBytes,
+                          fit: BoxFit.cover,
+                        ),
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.75),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'RAW CAPTURE (UNEDITED)',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
 
                       if (_isRecomputing)
                         Container(
@@ -623,27 +763,64 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppTheme.tertiaryContainer.withValues(alpha: 0.4),
-                      shape: BoxShape.circle,
+                  // Holographic Radial Sweep Gauge
+                  SizedBox(
+                    width: 58,
+                    height: 58,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CustomPaint(
+                          size: const Size(58, 58),
+                          painter: _RadialComplianceGaugePainter(
+                            scorePercent: widget.auditResult.scorePercent.toDouble(),
+                          ),
+                        ),
+                        Text(
+                          '${widget.auditResult.scorePercent}%',
+                          style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.tertiary,
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.check_circle, color: AppTheme.tertiary, size: 28),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '100% ICAO 9303 Compliant',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.onSurface,
-                            fontSize: 15,
-                          ),
+                        Row(
+                          children: [
+                            const Text(
+                              'Consular Certified',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.onSurface,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.tertiary.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'ICAO 9303',
+                                style: TextStyle(
+                                  fontFamily: 'JetBrains Mono',
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.tertiary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -656,15 +833,16 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppTheme.surfaceContainerHigh,
+                      color: AppTheme.tertiary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.tertiary.withValues(alpha: 0.4)),
                     ),
-                    child: Text(
-                      '${widget.auditResult.scorePercent}%',
-                      style: const TextStyle(
+                    child: const Text(
+                      'PASS',
+                      style: TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        fontSize: 12,
                         color: AppTheme.tertiary,
                       ),
                     ),
@@ -727,6 +905,46 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   Widget _buildBiometricOverlay() {
     return CustomPaint(
       painter: _BiometricGridPainter(aspectRatio: widget.spec.aspectRatio),
+    );
+  }
+
+  Widget _buildModeToggleButton({
+    required int modeIndex,
+    required IconData icon,
+    required String label,
+  }) {
+    final isSelected = _viewMode == modeIndex;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _viewMode = modeIndex);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isSelected ? Colors.white : AppTheme.outline,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : AppTheme.outline,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -869,4 +1087,59 @@ class _BiometricGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _SplitRectClipper extends CustomClipper<Rect> {
+  final double splitRatio;
+
+  _SplitRectClipper({required this.splitRatio});
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTWH(0, 0, size.width * splitRatio, size.height);
+  }
+
+  @override
+  bool shouldReclip(covariant _SplitRectClipper oldClipper) => oldClipper.splitRatio != splitRatio;
+}
+
+class _RadialComplianceGaugePainter extends CustomPainter {
+  final double scorePercent;
+
+  _RadialComplianceGaugePainter({required this.scorePercent});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 4;
+
+    // Track ring
+    final trackPaint = Paint()
+      ..color = AppTheme.surfaceContainerHighest
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5.0;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    // Active arc
+    final sweepAngle = (scorePercent / 100.0) * 2 * math.pi;
+    final arcPaint = Paint()
+      ..shader = const SweepGradient(
+        colors: [AppTheme.secondary, AppTheme.tertiary, AppTheme.secondary],
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 6.0;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      sweepAngle,
+      false,
+      arcPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RadialComplianceGaugePainter oldDelegate) =>
+      oldDelegate.scorePercent != scorePercent;
 }

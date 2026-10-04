@@ -413,37 +413,136 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Hero Selected Document Card
+          // Consular Passport Booklet Hero Card
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceContainer,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF141926),
+                  Color(0xFF0C1019),
+                ],
+              ),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4), width: 1.5),
+              border: Border.all(
+                color: const Color(0xFFD4AF37).withValues(alpha: 0.4),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.primary.withValues(alpha: 0.1),
-                  blurRadius: 20,
+                  color: const Color(0xFFD4AF37).withValues(alpha: 0.08),
+                  blurRadius: 24,
                   offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Top Passport Booklet Banner: Biometric e-Passport Chip + ICAO Stamp
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4AF37).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: const Color(0xFFD4AF37).withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.nfc, size: 12, color: Color(0xFFD4AF37)),
+                          SizedBox(width: 5),
+                          Text(
+                            'BIOMETRIC PASSPORT',
+                            style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFD4AF37),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.secondary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: AppTheme.secondary.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.verified, size: 11, color: AppTheme.secondary),
+                          const SizedBox(width: 4),
+                          Text(
+                            selectedSpec.standardTag,
+                            style: const TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.secondary,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Passport Title & Crest
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        Text(selectedSpec.flagEmoji, style: const TextStyle(fontSize: 28)),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFFD4AF37).withValues(alpha: 0.45),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFD4AF37).withValues(alpha: 0.15),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: Text(selectedSpec.flagEmoji, style: const TextStyle(fontSize: 28)),
+                        ),
                         const SizedBox(width: 12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               selectedSpec.countryName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.onSurface),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                             Text(
                               selectedSpec.documentTitle,
@@ -454,19 +553,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ],
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        color: AppTheme.tertiary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.tertiary.withValues(alpha: 0.35)),
                       ),
-                      child: const Text(
-                        'READY',
-                        style: TextStyle(
-                          fontFamily: 'JetBrains Mono',
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primary,
-                        ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, size: 11, color: AppTheme.tertiary),
+                          SizedBox(width: 4),
+                          Text(
+                            'OFFICIAL',
+                            style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.tertiary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -518,9 +625,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             elevation: 4,
                           ),
                           icon: const Icon(Icons.camera_alt, size: 20),
-                          label: Text(
+                          label: const Text(
                             'Take Photo',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                         ),
                       ),
@@ -1069,8 +1176,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceContainerLow,
+        color: const Color(0xFF0D121B),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

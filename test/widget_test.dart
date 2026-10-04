@@ -1,12 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:specpass/main.dart';
+import 'package:specpass/screens/home_screen.dart';
 
 void main() {
   testWidgets('SpecPass app bottom tabs and studio smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: SpecPassApp(),
+        child: SpecPassApp(home: HomeScreen()),
       ),
     );
 
