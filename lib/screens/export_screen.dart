@@ -39,7 +39,13 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       // Share 4x6 sheet
       await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(widget.package.printSheetFile.path)],
+          files: [
+            XFile.fromData(
+              widget.package.printSheetBytes,
+              mimeType: 'image/jpeg',
+              name: 'specpass_4x6_print_sheet.jpg',
+            ),
+          ],
           text: 'SpecPass 4x6" Print Sheet (${widget.spec.countryName} - ${widget.spec.formattedDimensions})',
         ),
       );
@@ -66,7 +72,13 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     try {
       await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(widget.package.singlePhotoFile.path)],
+          files: [
+            XFile.fromData(
+              widget.package.singlePhotoBytes,
+              mimeType: 'image/jpeg',
+              name: 'specpass_passport_photo.jpg',
+            ),
+          ],
           text: 'SpecPass Digital Photo (${widget.spec.countryName} - ${widget.spec.formattedDimensions})',
         ),
       );
@@ -183,8 +195,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 borderRadius: BorderRadius.circular(10),
                 child: AspectRatio(
                   aspectRatio: 1200 / 1800, // 4:6 aspect ratio
-                  child: Image.file(
-                    widget.package.printSheetFile,
+                  child: Image.memory(
+                    widget.package.printSheetBytes,
                     fit: BoxFit.contain,
                   ),
                 ),

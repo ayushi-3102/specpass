@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -113,17 +112,17 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
     setState(() => _isProcessing = true);
 
     try {
-      File fileToProcess;
+      Uint8List bytesToProcess;
 
       if (_cameraController != null && _cameraController!.value.isInitialized) {
         final XFile captured = await _cameraController!.takePicture();
-        fileToProcess = File(captured.path);
+        bytesToProcess = await captured.readAsBytes();
       } else {
-        // Fallback simulator demo file
-        fileToProcess = await _loadSampleAsset();
+        // Fallback simulator demo asset
+        bytesToProcess = await _loadSampleAssetBytes();
       }
 
-      await _runProcessingPipeline(fileToProcess);
+      await _runProcessingPipeline(bytesToProcess);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -144,7 +143,8 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
 
       if (picked != null) {
         setState(() => _isProcessing = true);
-        await _runProcessingPipeline(File(picked.path));
+        final bytes = await picked.readAsBytes();
+        await _runProcessingPipeline(bytes);
       }
     } catch (e) {
       if (!mounted) return;
@@ -156,18 +156,14 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
     }
   }
 
-  Future<File> _loadSampleAsset() async {
-    // If running in simulator/desktop without camera hardware, load local asset
+  Future<Uint8List> _loadSampleAssetBytes() async {
     final byteData = await rootBundle.load('assets/images/sample_portrait.png');
-    final tempDir = Directory.systemTemp;
-    final file = File('${tempDir.path}/sample_portrait_${DateTime.now().millisecondsSinceEpoch}.png');
-    await file.writeAsBytes(byteData.buffer.asUint8List());
-    return file;
+    return byteData.buffer.asUint8List();
   }
 
-  Future<void> _runProcessingPipeline(File rawPhoto) async {
-    final package = await PhotoComposerService.processPhoto(
-      sourceImageFile: rawPhoto,
+  Future<void> _runProcessingPipeline(Uint8List rawBytes) async {
+    final package = await PhotoComposerService.processPhotoBytes(
+      rawBytes: rawBytes,
       spec: widget.spec,
     );
 

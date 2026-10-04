@@ -1,12 +1,10 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
-import 'package:path_provider/path_provider.dart';
 import '../models/country_spec.dart';
 
 class ProcessedPhotoPackage {
-  final File singlePhotoFile;
-  final File printSheetFile;
+  final Uint8List singlePhotoBytes;
+  final Uint8List printSheetBytes;
   final int singleWidth;
   final int singleHeight;
   final int printSheetWidth;
@@ -14,8 +12,8 @@ class ProcessedPhotoPackage {
   final int photosOnSheet;
 
   ProcessedPhotoPackage({
-    required this.singlePhotoFile,
-    required this.printSheetFile,
+    required this.singlePhotoBytes,
+    required this.printSheetBytes,
     required this.singleWidth,
     required this.singleHeight,
     required this.printSheetWidth,
@@ -28,12 +26,12 @@ class PhotoComposerService {
   PhotoComposerService._();
 
   /// Process photo into both a single high-res compliant photo and a 4x6" pharmacy print sheet
-  static Future<ProcessedPhotoPackage> processPhoto({
-    required File sourceImageFile,
+  static Future<ProcessedPhotoPackage> processPhotoBytes({
+    required Uint8List rawBytes,
     required CountrySpec spec,
   }) async {
     return compute(_processInBackground, {
-      'path': sourceImageFile.path,
+      'bytes': rawBytes,
       'specId': spec.id,
       'widthMm': spec.widthMm,
       'heightMm': spec.heightMm,
@@ -43,14 +41,13 @@ class PhotoComposerService {
   }
 
   static Future<ProcessedPhotoPackage> _processInBackground(Map<String, dynamic> params) async {
-    final String sourcePath = params['path'];
+    final Uint8List rawBytes = params['bytes'];
     final double widthMm = params['widthMm'];
     final double heightMm = params['heightMm'];
     final int dpi = params['targetDpi'] ?? 300;
     final String bgHex = params['bgHex'] ?? '#FFFFFF';
 
-    final bytes = await File(sourcePath).readAsBytes();
-    final img.Image? decoded = img.decodeImage(bytes);
+    final img.Image? decoded = img.decodeImage(rawBytes);
 
     if (decoded == null) {
       throw Exception('Could not decode photo format.');
@@ -111,17 +108,11 @@ class PhotoComposerService {
     img.fill(finishedSingle, color: bgPixel);
     img.compositeImage(finishedSingle, resizedSingle, blend: img.BlendMode.direct);
 
-    // Save Single Photo
-    final tempDir = await getTemporaryDirectory();
-    final String singlePath = '${tempDir.path}/specpass_single_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final File singleFile = File(singlePath);
-    await singleFile.writeAsBytes(img.encodeJpg(finishedSingle, quality: 98));
+    final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
 
     // ----------------------------------------------------
     // BUILD 4x6" PHARMACY PRINT SHEET (1200 x 1800 px @ 300 DPI)
     // ----------------------------------------------------
-    // 4 inches = 101.6 mm, 6 inches = 152.4 mm
-    // At 300 DPI: Width = 1200, Height = 1800 (Portrait) or 1800 x 1200 (Landscape)
     const int sheetW = 1200;
     const int sheetH = 1800;
 
@@ -153,14 +144,11 @@ class PhotoComposerService {
       }
     }
 
-    // Save Print Sheet
-    final String sheetPath = '${tempDir.path}/specpass_4x6_sheet_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final File sheetFile = File(sheetPath);
-    await sheetFile.writeAsBytes(img.encodeJpg(printSheet, quality: 98));
+    final Uint8List sheetJpgBytes = Uint8List.fromList(img.encodeJpg(printSheet, quality: 98));
 
     return ProcessedPhotoPackage(
-      singlePhotoFile: singleFile,
-      printSheetFile: sheetFile,
+      singlePhotoBytes: singleJpgBytes,
+      printSheetBytes: sheetJpgBytes,
       singleWidth: targetWidth,
       singleHeight: targetHeight,
       printSheetWidth: sheetW,

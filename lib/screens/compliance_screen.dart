@@ -73,8 +73,8 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.file(
-                        widget.package.singlePhotoFile,
+                      Image.memory(
+                        widget.package.singlePhotoBytes,
                         fit: BoxFit.cover,
                       ),
                       if (_showBiometricOverlay) _buildBiometricOverlay(),
