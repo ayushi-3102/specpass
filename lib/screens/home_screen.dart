@@ -63,7 +63,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _processAndNavigate(Uint8List bytes, CountrySpec spec) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Processing biometric segmentation & solid white background...'),
+        content: Text('Processing biometric sizing & compliance framing...'),
         duration: Duration(seconds: 1),
       ),
     );

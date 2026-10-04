@@ -18,7 +18,6 @@ class ProcessedPhotoPackage {
   final double brightness;
   final double contrast;
   final bool isBabyMode;
-  final String formalAttire;
 
   ProcessedPhotoPackage({
     required this.singlePhotoBytes,
@@ -28,12 +27,11 @@ class ProcessedPhotoPackage {
     required this.printSheetWidth,
     required this.printSheetHeight,
     required this.photosOnSheet,
-    this.activeBgHex = '#FFFFFF',
+    this.activeBgHex = 'original',
     this.sensitivity = 1.0,
     this.brightness = 0.0,
     this.contrast = 1.0,
     this.isBabyMode = false,
-    this.formalAttire = 'none',
   });
 }
 
@@ -49,7 +47,6 @@ class PhotoComposerService {
     double brightness = 0.0,
     double contrast = 1.0,
     bool isBabyMode = false,
-    String formalAttire = 'none',
   }) async {
     return compute(_processInBackground, {
       'bytes': rawBytes,
@@ -57,12 +54,11 @@ class PhotoComposerService {
       'widthMm': spec.widthMm,
       'heightMm': spec.heightMm,
       'targetDpi': spec.targetDpi,
-      'bgHex': overrideBgHex ?? spec.backgroundColorHex,
+      'bgHex': overrideBgHex ?? 'original',
       'sensitivity': sensitivity,
       'brightness': brightness,
       'contrast': contrast,
       'isBabyMode': isBabyMode,
-      'formalAttire': formalAttire,
     });
   }
 
@@ -71,7 +67,7 @@ class PhotoComposerService {
     final double widthMm = params['widthMm'];
     final double heightMm = params['heightMm'];
     final int dpi = params['targetDpi'] ?? 300;
-    final String bgHex = params['bgHex'] ?? '#FFFFFF';
+    final String bgHex = params['bgHex'] ?? 'original';
 
     final img.Image? decoded = img.decodeImage(rawBytes);
 
@@ -121,7 +117,6 @@ class PhotoComposerService {
     final double brightness = (params['brightness'] as num?)?.toDouble() ?? 0.0;
     final double contrast = (params['contrast'] as num?)?.toDouble() ?? 1.0;
     final bool isBabyMode = params['isBabyMode'] == true;
-    final String formalAttire = params['formalAttire'] ?? 'none';
 
     // Parse target background color (or preserve original wall if requested)
     final bool isOriginalBg = bgHex.toLowerCase() == 'original' || sensitivity <= 0.05;
@@ -135,11 +130,6 @@ class PhotoComposerService {
     // Apply brightness & contrast fine-tuning
     if (brightness != 0.0 || contrast != 1.0) {
       _applyBrightnessContrast(resizedSingle, brightness, contrast);
-    }
-
-    // Apply formal attire overlay if requested
-    if (formalAttire != 'none') {
-      _applyFormalAttire(resizedSingle, formalAttire);
     }
 
     // -------------------------------------------------------------------------
@@ -206,7 +196,6 @@ class PhotoComposerService {
       brightness: brightness,
       contrast: contrast,
       isBabyMode: isBabyMode,
-      formalAttire: formalAttire,
     );
   }
 
@@ -390,28 +379,43 @@ class PhotoComposerService {
       }
     }
 
-    // 4. Composite result with soft edge antialiasing
+    // 4. Composite result with subtle studio lighting falloff and multi-pixel feathering
     final img.Image result = img.Image(width: width, height: height, numChannels: 3);
 
     for (int y = 0; y < height; y++) {
+      // Soft natural studio illumination falloff (1.0 at top down to 0.975 at bottom)
+      // This prevents harsh stark vector-white and replicates real photo studio backdrop lighting
+      final double studioGrad = 1.0 - (y / height) * 0.025;
+      final int studioR = (targetBgColor.r * studioGrad).round().clamp(0, 255);
+      final int studioG = (targetBgColor.g * studioGrad).round().clamp(0, 255);
+      final int studioB = (targetBgColor.b * studioGrad).round().clamp(0, 255);
+
       for (int x = 0; x < width; x++) {
         final int idx = y * width + x;
         if (isBg[idx]) {
-          result.setPixel(x, y, targetBgColor);
+          result.setPixelRgb(x, y, studioR, studioG, studioB);
         } else {
-          // Check if boundary pixel next to background for soft feathering
+          // Multi-directional anti-aliasing check around subject perimeter
           int bgNeighborCount = 0;
-          if (x > 0 && isBg[idx - 1]) bgNeighborCount++;
-          if (x < width - 1 && isBg[idx + 1]) bgNeighborCount++;
-          if (y > 0 && isBg[idx - width]) bgNeighborCount++;
-          if (y < height - 1 && isBg[idx + width]) bgNeighborCount++;
+          for (int dy = -1; dy <= 1; dy++) {
+            final int ny = y + dy;
+            if (ny < 0 || ny >= height) continue;
+            for (int dx = -1; dx <= 1; dx++) {
+              if (dx == 0 && dy == 0) continue;
+              final int nx = x + dx;
+              if (nx < 0 || nx >= width) continue;
+              if (isBg[ny * width + nx]) bgNeighborCount++;
+            }
+          }
 
-          if (bgNeighborCount >= 2) {
-            // Soft 15% edge blend with target background
+          if (bgNeighborCount > 0) {
+            // Smooth natural feathering based on exposure to background
+            final double bgWeight = (bgNeighborCount / 8.0) * 0.40;
+            final double fgWeight = 1.0 - bgWeight;
             final srcP = source.getPixel(x, y);
-            final blendedR = (srcP.r * 0.85 + targetBgColor.r * 0.15).round();
-            final blendedG = (srcP.g * 0.85 + targetBgColor.g * 0.15).round();
-            final blendedB = (srcP.b * 0.85 + targetBgColor.b * 0.15).round();
+            final int blendedR = (srcP.r * fgWeight + studioR * bgWeight).round().clamp(0, 255);
+            final int blendedG = (srcP.g * fgWeight + studioG * bgWeight).round().clamp(0, 255);
+            final int blendedB = (srcP.b * fgWeight + studioB * bgWeight).round().clamp(0, 255);
             result.setPixelRgb(x, y, blendedR, blendedG, blendedB);
           } else {
             result.setPixel(x, y, source.getPixel(x, y));
@@ -459,53 +463,6 @@ class PhotoComposerService {
       pixel.r = r.round();
       pixel.g = g.round();
       pixel.b = b.round();
-    }
-  }
-
-  static void _applyFormalAttire(img.Image image, String style) {
-    final int width = image.width;
-    final int height = image.height;
-
-    // Determine suit color based on style
-    final suitColor = (style == 'navy_suit')
-        ? img.ColorRgb8(24, 38, 68) // Navy Blazer
-        : img.ColorRgb8(32, 34, 40); // Charcoal Executive
-
-    final lapelColor = (style == 'navy_suit')
-        ? img.ColorRgb8(16, 28, 52)
-        : img.ColorRgb8(22, 24, 28);
-
-    final shirtColor = img.ColorRgb8(250, 252, 255);
-    final tieColor = img.ColorRgb8(120, 28, 36); // Classic Burgundy or Dark Slate
-
-    final int startY = (height * 0.76).round();
-    final int centerX = width ~/ 2;
-
-    for (int y = startY; y < height; y++) {
-      final double progress = (y - startY) / (height - startY);
-      final int shoulderSpread = (width * (0.28 + progress * 0.32)).round();
-      final int leftShoulder = (centerX - shoulderSpread).clamp(0, width - 1);
-      final int rightShoulder = (centerX + shoulderSpread).clamp(0, width - 1);
-
-      for (int x = leftShoulder; x <= rightShoulder; x++) {
-        final int distFromCenter = (x - centerX).abs();
-        final int vWidthAtY = ((1.0 - progress * 0.4) * (width * 0.11)).round();
-
-        if (distFromCenter < vWidthAtY) {
-          // Inside V-neck / shirt & tie area
-          if (distFromCenter <= (width * 0.024).round() && progress > 0.18) {
-            image.setPixel(x, y, tieColor);
-          } else {
-            image.setPixel(x, y, shirtColor);
-          }
-        } else if (distFromCenter < vWidthAtY + (width * 0.05).round()) {
-          // Lapel
-          image.setPixel(x, y, lapelColor);
-        } else {
-          // Suit jacket
-          image.setPixel(x, y, suitColor);
-        }
-      }
     }
   }
 

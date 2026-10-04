@@ -36,14 +36,13 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   double _sensitivity = 1.0;
   double _brightness = 0.0;
   double _contrast = 1.0;
-  String _formalAttire = 'none';
   bool _isBabyMode = false;
 
   final List<Map<String, String>> _bgOptions = [
-    {'name': 'Pure White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
-    {'name': 'Original Wall', 'hex': 'original', 'subtitle': 'Preserve Real Wall'},
-    {'name': 'Light Gray', 'hex': '#F0F0F0', 'subtitle': 'UK, Germany'},
-    {'name': 'Off-White', 'hex': '#F8F9FA', 'subtitle': 'Universal ICAO'},
+    {'name': 'Original Wall', 'hex': 'original', 'subtitle': 'Natural & Authentic (Recommended)'},
+    {'name': 'Studio Off-White', 'hex': '#F8F9FA', 'subtitle': 'Soft Studio Lighting'},
+    {'name': 'Light Gray', 'hex': '#EDEDF0', 'subtitle': 'ICAO, UK, Germany'},
+    {'name': 'Studio White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
     {'name': 'Sky Blue', 'hex': '#7BD0FF', 'subtitle': 'China, Malaysia'},
   ];
 
@@ -55,7 +54,6 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     _sensitivity = widget.package.sensitivity;
     _brightness = widget.package.brightness;
     _contrast = widget.package.contrast;
-    _formalAttire = widget.package.formalAttire;
     _isBabyMode = widget.package.isBabyMode;
   }
 
@@ -64,14 +62,12 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     double? sensitivity,
     double? brightness,
     double? contrast,
-    String? formalAttire,
     bool? isBabyMode,
   }) async {
     final targetHex = hex ?? _activeBgHex;
     final targetSens = sensitivity ?? _sensitivity;
     final targetBright = brightness ?? _brightness;
     final targetContrast = contrast ?? _contrast;
-    final targetAttire = formalAttire ?? _formalAttire;
     final targetBaby = isBabyMode ?? _isBabyMode;
 
     HapticFeedback.selectionClick();
@@ -82,7 +78,6 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
       _sensitivity = targetSens;
       _brightness = targetBright;
       _contrast = targetContrast;
-      _formalAttire = targetAttire;
       _isBabyMode = targetBaby;
     });
 
@@ -94,7 +89,6 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         sensitivity: targetSens,
         brightness: targetBright,
         contrast: targetContrast,
-        formalAttire: targetAttire,
         isBabyMode: targetBaby,
       );
 
@@ -718,7 +712,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Virtual Formal Attire & Baby Mode Row
+            // Infant & Toddler Mode Container
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
@@ -726,63 +720,34 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: AppTheme.outlineVariant),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Formal Attire Selector
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Virtual Formal Attire',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
-                      ),
                       Row(
                         children: [
-                          _buildAttireChip('None', 'none'),
-                          const SizedBox(width: 6),
-                          _buildAttireChip('👔 Navy Blazer', 'navy_suit'),
-                          const SizedBox(width: 6),
-                          _buildAttireChip('🤵 Charcoal Suit', 'charcoal_suit'),
+                          Text('👶 ', style: TextStyle(fontSize: 14)),
+                          Text(
+                            'Infant & Toddler Mode',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
+                          ),
                         ],
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Applies relaxed ICAO 9303 child exemptions (infants < 1 yr)',
+                        style: TextStyle(fontSize: 10, color: AppTheme.onSurfaceVariant),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  const Divider(color: AppTheme.outlineVariant, height: 1),
-                  const SizedBox(height: 10),
-
-                  // Baby & Infant Mode Switch
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text('👶 ', style: TextStyle(fontSize: 14)),
-                              Text(
-                                'Infant & Toddler Mode',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Applies relaxed ICAO 9303 child exemptions (infants < 1 yr)',
-                            style: TextStyle(fontSize: 10, color: AppTheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                      Switch(
-                        value: _isBabyMode,
-                        activeThumbColor: AppTheme.tertiary,
-                        onChanged: (val) {
-                          _reprocessPhoto(isBabyMode: val);
-                        },
-                      ),
-                    ],
+                  Switch(
+                    value: _isBabyMode,
+                    activeThumbColor: AppTheme.tertiary,
+                    onChanged: (val) {
+                      _reprocessPhoto(isBabyMode: val);
+                    },
                   ),
                 ],
               ),
@@ -1037,36 +1002,6 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAttireChip(String label, String style) {
-    final isSelected = _formalAttire == style;
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        _reprocessPhoto(formalAttire: style);
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryContainer : AppTheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppTheme.primary : AppTheme.outlineVariant,
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.white : AppTheme.onSurfaceVariant,
-          ),
-        ),
       ),
     );
   }

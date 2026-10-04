@@ -86,20 +86,22 @@ void main() {
     );
     expect(enhancedPackage.singlePhotoBytes, isNotEmpty);
 
-    // Test Virtual Formal Attire (Navy Suit & Charcoal Suit)
-    final navySuitPackage = await PhotoComposerService.processPhotoBytes(
+    // Test Natural Wall (Authentic) & Studio Off-White presets
+    final naturalWallPackage = await PhotoComposerService.processPhotoBytes(
       rawBytes: rawBytes,
       spec: spec,
-      formalAttire: 'navy_suit',
+      overrideBgHex: 'original',
     );
-    expect(navySuitPackage.singlePhotoBytes, isNotEmpty);
+    expect(naturalWallPackage.singlePhotoBytes, isNotEmpty);
+    expect(naturalWallPackage.activeBgHex, equals('original'));
 
-    final charcoalSuitPackage = await PhotoComposerService.processPhotoBytes(
+    final studioOffWhitePackage = await PhotoComposerService.processPhotoBytes(
       rawBytes: rawBytes,
       spec: spec,
-      formalAttire: 'charcoal_suit',
+      overrideBgHex: '#F8F9FA',
     );
-    expect(charcoalSuitPackage.singlePhotoBytes, isNotEmpty);
+    expect(studioOffWhitePackage.singlePhotoBytes, isNotEmpty);
+    expect(studioOffWhitePackage.activeBgHex, equals('#F8F9FA'));
 
     // Test Baby Mode processing (infant relaxed geometry)
     final babyPackage = await PhotoComposerService.processPhotoBytes(
