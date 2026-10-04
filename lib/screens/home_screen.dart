@@ -158,27 +158,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Text('SpecPass', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'ICAO 9303',
-                        style: TextStyle(
-                          fontFamily: 'JetBrains Mono',
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.secondary,
-                        ),
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'SpecPass',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
                 Text(
                   AppStrings.get('app_subtitle', lang),
