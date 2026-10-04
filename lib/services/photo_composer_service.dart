@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../models/country_spec.dart';
 
 class ProcessedPhotoPackage {
@@ -12,6 +14,10 @@ class ProcessedPhotoPackage {
   final int photosOnSheet;
   final String activeBgHex;
   final double sensitivity;
+  final double brightness;
+  final double contrast;
+  final bool isBabyMode;
+  final String formalAttire;
 
   ProcessedPhotoPackage({
     required this.singlePhotoBytes,
@@ -23,6 +29,10 @@ class ProcessedPhotoPackage {
     required this.photosOnSheet,
     this.activeBgHex = '#FFFFFF',
     this.sensitivity = 1.0,
+    this.brightness = 0.0,
+    this.contrast = 1.0,
+    this.isBabyMode = false,
+    this.formalAttire = 'none',
   });
 }
 
@@ -35,6 +45,10 @@ class PhotoComposerService {
     required CountrySpec spec,
     String? overrideBgHex,
     double sensitivity = 1.0,
+    double brightness = 0.0,
+    double contrast = 1.0,
+    bool isBabyMode = false,
+    String formalAttire = 'none',
   }) async {
     return compute(_processInBackground, {
       'bytes': rawBytes,
@@ -44,6 +58,10 @@ class PhotoComposerService {
       'targetDpi': spec.targetDpi,
       'bgHex': overrideBgHex ?? spec.backgroundColorHex,
       'sensitivity': sensitivity,
+      'brightness': brightness,
+      'contrast': contrast,
+      'isBabyMode': isBabyMode,
+      'formalAttire': formalAttire,
     });
   }
 
@@ -107,6 +125,20 @@ class PhotoComposerService {
     );
 
     final double sensitivity = (params['sensitivity'] as num?)?.toDouble() ?? 1.0;
+    final double brightness = (params['brightness'] as num?)?.toDouble() ?? 0.0;
+    final double contrast = (params['contrast'] as num?)?.toDouble() ?? 1.0;
+    final bool isBabyMode = params['isBabyMode'] == true;
+    final String formalAttire = params['formalAttire'] ?? 'none';
+
+    // Apply brightness & contrast fine-tuning
+    if (brightness != 0.0 || contrast != 1.0) {
+      _applyBrightnessContrast(resizedSingle, brightness, contrast);
+    }
+
+    // Apply formal attire overlay if requested
+    if (formalAttire != 'none') {
+      _applyFormalAttire(resizedSingle, formalAttire);
+    }
 
     // -------------------------------------------------------------------------
     // BIOMETRIC BACKGROUND SEGMENTATION & REPLACEMENT
@@ -116,6 +148,7 @@ class PhotoComposerService {
       source: resizedSingle,
       targetBgColor: bgPixel,
       sensitivity: sensitivity,
+      isBabyMode: isBabyMode,
     );
 
     final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
@@ -166,6 +199,10 @@ class PhotoComposerService {
       photosOnSheet: totalPhotos,
       activeBgHex: bgHex,
       sensitivity: sensitivity,
+      brightness: brightness,
+      contrast: contrast,
+      isBabyMode: isBabyMode,
+      formalAttire: formalAttire,
     );
   }
 
@@ -175,6 +212,7 @@ class PhotoComposerService {
     required img.Image source,
     required img.Color targetBgColor,
     double sensitivity = 1.0,
+    bool isBabyMode = false,
   }) {
     final int width = source.width;
     final int height = source.height;
@@ -202,9 +240,9 @@ class PhotoComposerService {
 
     // 2. Head & Torso Protection Zone (Centered Biometric Ellipse)
     final double centerX = width * 0.50;
-    final double centerY = height * 0.44;
-    final double radiusX = width * 0.28;
-    final double radiusY = height * 0.34;
+    final double centerY = height * (isBabyMode ? 0.48 : 0.44);
+    final double radiusX = width * (isBabyMode ? 0.32 : 0.28);
+    final double radiusY = height * (isBabyMode ? 0.38 : 0.34);
 
     // 3. Flood-fill background detection
     final List<bool> isBg = List<bool>.filled(width * height, false);
@@ -334,6 +372,204 @@ class PhotoComposerService {
         }
       }
     }
+  }
+
+  static void _applyBrightnessContrast(img.Image image, double brightness, double contrast) {
+    if (brightness == 0.0 && contrast == 1.0) return;
+    for (final pixel in image) {
+      double r = pixel.r.toDouble();
+      double g = pixel.g.toDouble();
+      double b = pixel.b.toDouble();
+      r = ((r - 128.0) * contrast + 128.0 + (brightness * 75.0)).clamp(0.0, 255.0);
+      g = ((g - 128.0) * contrast + 128.0 + (brightness * 75.0)).clamp(0.0, 255.0);
+      b = ((b - 128.0) * contrast + 128.0 + (brightness * 75.0)).clamp(0.0, 255.0);
+      pixel.r = r.round();
+      pixel.g = g.round();
+      pixel.b = b.round();
+    }
+  }
+
+  static void _applyFormalAttire(img.Image image, String style) {
+    final int width = image.width;
+    final int height = image.height;
+
+    // Determine suit color based on style
+    final suitColor = (style == 'navy_suit')
+        ? img.ColorRgb8(24, 38, 68) // Navy Blazer
+        : img.ColorRgb8(32, 34, 40); // Charcoal Executive
+
+    final lapelColor = (style == 'navy_suit')
+        ? img.ColorRgb8(16, 28, 52)
+        : img.ColorRgb8(22, 24, 28);
+
+    final shirtColor = img.ColorRgb8(250, 252, 255);
+    final tieColor = img.ColorRgb8(120, 28, 36); // Classic Burgundy or Dark Slate
+
+    final int startY = (height * 0.76).round();
+    final int centerX = width ~/ 2;
+
+    for (int y = startY; y < height; y++) {
+      final double progress = (y - startY) / (height - startY);
+      final int shoulderSpread = (width * (0.28 + progress * 0.32)).round();
+      final int leftShoulder = (centerX - shoulderSpread).clamp(0, width - 1);
+      final int rightShoulder = (centerX + shoulderSpread).clamp(0, width - 1);
+
+      for (int x = leftShoulder; x <= rightShoulder; x++) {
+        final int distFromCenter = (x - centerX).abs();
+        final int vWidthAtY = ((1.0 - progress * 0.4) * (width * 0.11)).round();
+
+        if (distFromCenter < vWidthAtY) {
+          // Inside V-neck / shirt & tie area
+          if (distFromCenter <= (width * 0.024).round() && progress > 0.18) {
+            image.setPixel(x, y, tieColor);
+          } else {
+            image.setPixel(x, y, shirtColor);
+          }
+        } else if (distFromCenter < vWidthAtY + (width * 0.05).round()) {
+          // Lapel
+          image.setPixel(x, y, lapelColor);
+        } else {
+          // Suit jacket
+          image.setPixel(x, y, suitColor);
+        }
+      }
+    }
+  }
+
+  /// Generates a printable PDF with:
+  /// - Page 1: Exact 10×15 cm (4×6") borderless sheet (optimal for photo kiosks / AirPrint)
+  /// - Page 2: Standard A4 Document with centered sheet and German/US kiosk instructions
+  static Future<Uint8List> generatePrintablePdf({
+    required Uint8List printSheetBytes,
+    required CountrySpec spec,
+  }) async {
+    final pdf = pw.Document();
+    final image = pw.MemoryImage(printSheetBytes);
+
+    // Page 1: Exact 10x15 cm (4x6") sheet for borderless photo printing (288 x 432 pt)
+    pdf.addPage(
+      pw.Page(
+        pageFormat: const PdfPageFormat(288, 432, marginAll: 0),
+        build: (pw.Context context) {
+          return pw.FullPage(
+            ignoreMargins: true,
+            child: pw.Center(
+              child: pw.Image(image, fit: pw.BoxFit.contain),
+            ),
+          );
+        },
+      ),
+    );
+
+    // Page 2: Standard A4 Document with sheet centered & cutting guides + localized instructions
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Header(
+                level: 0,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('SpecPass Biometric Passport Photo Sheet', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                    pw.Text('${spec.countryName} (${spec.formattedDimensions})', style: const pw.TextStyle(fontSize: 11)),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 14),
+              pw.Container(
+                width: 288,
+                height: 432,
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey500, width: 1),
+                ),
+                child: pw.Image(image, fit: pw.BoxFit.contain),
+              ),
+              pw.SizedBox(height: 16),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: const pw.BoxDecoration(
+                  color: PdfColors.grey100,
+                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'PRINTING INSTRUCTIONS (100% SCALE):',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.black),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      '1. Print at "Actual Size" or 100% scale. Do NOT select "Fit to Printable Area".\n'
+                      '2. For Germany (dm / Rossmann): At the kiosk choose "Foto sofort 10x15 cm" (cost: ~0.27 EUR). Select "Ohne Rand".\n'
+                      '3. Use glossy or semi-matte photo paper. Cut along the dashed boundary lines.',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  /// Generates a combined multi-person Family Sheet (e.g. 2 for Dad, 2 for Mom, 2 for Child)
+  /// on a single 10x15 cm (4x6") sheet for dm / Walgreens.
+  static Future<Uint8List> generateFamilyPrintSheet({
+    required List<Uint8List> individualPhotoBytes,
+    required CountrySpec spec,
+  }) async {
+    const int sheetW = 1200;
+    const int sheetH = 1800;
+
+    final img.Image printSheet = img.Image(width: sheetW, height: sheetH, numChannels: 3);
+    img.fill(printSheet, color: img.ColorRgb8(255, 255, 255));
+
+    final int targetWidth = ((spec.widthMm / 25.4) * spec.targetDpi).round();
+    final int targetHeight = ((spec.heightMm / 25.4) * spec.targetDpi).round();
+
+    final int cols = (spec.widthMm > 45) ? 2 : 2;
+    final int rows = (spec.widthMm > 45) ? 2 : 3;
+
+    final int totalPhotoW = targetWidth * cols;
+    final int totalPhotoH = targetHeight * rows;
+    final int marginX = (sheetW - totalPhotoW) ~/ (cols + 1);
+    final int marginY = (sheetH - 120 - totalPhotoH) ~/ (rows + 1) + 80;
+
+    final List<img.Image> decodedPhotos = [];
+    for (final bytes in individualPhotoBytes) {
+      final d = img.decodeImage(bytes);
+      if (d != null) {
+        decodedPhotos.add(img.copyResize(d, width: targetWidth, height: targetHeight));
+      }
+    }
+
+    if (decodedPhotos.isEmpty) return Uint8List(0);
+
+    int photoIdx = 0;
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final currentMemberImg = decodedPhotos[photoIdx % decodedPhotos.length];
+        final int x = marginX + c * (targetWidth + marginX);
+        final int y = marginY + r * (targetHeight + marginY);
+
+        img.compositeImage(printSheet, currentMemberImg, dstX: x, dstY: y);
+        _drawDashedBorder(printSheet, x - 1, y - 1, targetWidth + 2, targetHeight + 2);
+
+        photoIdx++;
+      }
+    }
+
+    return Uint8List.fromList(img.encodeJpg(printSheet, quality: 98));
   }
 
   static int _hexToColor(String hex) {

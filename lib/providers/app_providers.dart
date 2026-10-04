@@ -109,3 +109,30 @@ class ProStatusNotifier extends Notifier<bool> {
 final proStatusProvider = NotifierProvider<ProStatusNotifier, bool>(
   ProStatusNotifier.new,
 );
+
+/// App Language Provider ('en' or 'de')
+class AppLanguageNotifier extends Notifier<String> {
+  @override
+  String build() => 'en';
+
+  void setLanguage(String lang) => state = lang;
+  void toggle() => state = state == 'en' ? 'de' : 'en';
+}
+
+final appLanguageProvider = NotifierProvider<AppLanguageNotifier, String>(
+  AppLanguageNotifier.new,
+);
+
+/// Global Infant / Baby Mode Notifier
+class BabyModeNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void toggle() => state = !state;
+  void setBabyMode(bool enabled) => state = enabled;
+}
+
+final babyModeProvider = NotifierProvider<BabyModeNotifier, bool>(
+  BabyModeNotifier.new,
+);
+

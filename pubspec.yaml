@@ -44,7 +44,7 @@ dependencies:
   purchases_flutter: ^10.14.0
   shared_preferences: ^2.5.5
   intl: ^0.20.3
-
+  pdf: ^3.13.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

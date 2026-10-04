@@ -60,5 +60,53 @@ void main() {
     final facePixel = processedImg.getPixel(301, 260);
     expect(facePixel.r, inInclusiveRange(180, 240));
     expect(facePixel.g, inInclusiveRange(130, 180));
+
+    // Test PDF generation
+    final pdfBytes = await PhotoComposerService.generatePrintablePdf(
+      printSheetBytes: package.printSheetBytes,
+      spec: spec,
+    );
+    expect(pdfBytes, isNotEmpty);
+    // PDF file header is %PDF
+    expect(String.fromCharCodes(pdfBytes.sublist(0, 4)), '%PDF');
+
+    // Test Family Print Sheet generation (combining 2 photos)
+    final familySheet = await PhotoComposerService.generateFamilyPrintSheet(
+      individualPhotoBytes: [package.singlePhotoBytes, package.singlePhotoBytes],
+      spec: spec,
+    );
+    expect(familySheet, isNotEmpty);
+
+    // Test Brightness & Contrast Adjustment
+    final enhancedPackage = await PhotoComposerService.processPhotoBytes(
+      rawBytes: rawBytes,
+      spec: spec,
+      brightness: 0.15,
+      contrast: 1.20,
+    );
+    expect(enhancedPackage.singlePhotoBytes, isNotEmpty);
+
+    // Test Virtual Formal Attire (Navy Suit & Charcoal Suit)
+    final navySuitPackage = await PhotoComposerService.processPhotoBytes(
+      rawBytes: rawBytes,
+      spec: spec,
+      formalAttire: 'navy_suit',
+    );
+    expect(navySuitPackage.singlePhotoBytes, isNotEmpty);
+
+    final charcoalSuitPackage = await PhotoComposerService.processPhotoBytes(
+      rawBytes: rawBytes,
+      spec: spec,
+      formalAttire: 'charcoal_suit',
+    );
+    expect(charcoalSuitPackage.singlePhotoBytes, isNotEmpty);
+
+    // Test Baby Mode processing (infant relaxed geometry)
+    final babyPackage = await PhotoComposerService.processPhotoBytes(
+      rawBytes: rawBytes,
+      spec: spec,
+      isBabyMode: true,
+    );
+    expect(babyPackage.singlePhotoBytes, isNotEmpty);
   });
 }

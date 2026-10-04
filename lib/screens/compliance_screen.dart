@@ -32,6 +32,10 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   bool _isRecomputing = false;
   bool _showOriginal = false;
   double _sensitivity = 1.0;
+  double _brightness = 0.0;
+  double _contrast = 1.0;
+  String _formalAttire = 'none';
+  bool _isBabyMode = false;
 
   final List<Map<String, String>> _bgOptions = [
     {'name': 'Pure White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
@@ -46,19 +50,37 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     _currentPackage = widget.package;
     _activeBgHex = widget.package.activeBgHex;
     _sensitivity = widget.package.sensitivity;
+    _brightness = widget.package.brightness;
+    _contrast = widget.package.contrast;
+    _formalAttire = widget.package.formalAttire;
+    _isBabyMode = widget.package.isBabyMode;
   }
 
-  Future<void> _reprocessPhoto({String? hex, double? sensitivity}) async {
+  Future<void> _reprocessPhoto({
+    String? hex,
+    double? sensitivity,
+    double? brightness,
+    double? contrast,
+    String? formalAttire,
+    bool? isBabyMode,
+  }) async {
     final targetHex = hex ?? _activeBgHex;
     final targetSens = sensitivity ?? _sensitivity;
+    final targetBright = brightness ?? _brightness;
+    final targetContrast = contrast ?? _contrast;
+    final targetAttire = formalAttire ?? _formalAttire;
+    final targetBaby = isBabyMode ?? _isBabyMode;
 
-    if (targetHex == _activeBgHex && targetSens == _sensitivity && !_isRecomputing) return;
     HapticFeedback.selectionClick();
 
     setState(() {
       _isRecomputing = true;
       _activeBgHex = targetHex;
       _sensitivity = targetSens;
+      _brightness = targetBright;
+      _contrast = targetContrast;
+      _formalAttire = targetAttire;
+      _isBabyMode = targetBaby;
       _showOriginal = false;
     });
 
@@ -68,6 +90,10 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         spec: widget.spec,
         overrideBgHex: targetHex,
         sensitivity: targetSens,
+        brightness: targetBright,
+        contrast: targetContrast,
+        formalAttire: targetAttire,
+        isBabyMode: targetBaby,
       );
 
       if (mounted) {
@@ -80,7 +106,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
       if (mounted) {
         setState(() => _isRecomputing = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating background: $e')),
+          SnackBar(content: Text('Error updating photo: $e')),
         );
       }
     }
@@ -399,6 +425,192 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+
+            // Studio Lighting & Exposure Controls (Auto-Enhance, Brightness, Contrast)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.tune, size: 16, color: AppTheme.secondary),
+                          SizedBox(width: 6),
+                          Text(
+                            'Studio Lighting & Enhancements',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
+                          ),
+                        ],
+                      ),
+                      // 1-Tap Auto-Enhance Button
+                      GestureDetector(
+                        onTap: () {
+                          _reprocessPhoto(brightness: 0.08, contrast: 1.15);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppTheme.primary, AppTheme.secondary],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.auto_awesome, size: 12, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                'Auto-Enhance',
+                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Brightness Slider
+                  Row(
+                    children: [
+                      const Icon(Icons.brightness_6, size: 14, color: AppTheme.outline),
+                      const SizedBox(width: 8),
+                      const Text('Brightness', style: TextStyle(fontSize: 11, color: AppTheme.onSurfaceVariant)),
+                      Expanded(
+                        child: Slider(
+                          value: _brightness,
+                          min: -0.30,
+                          max: 0.30,
+                          divisions: 12,
+                          activeColor: AppTheme.primary,
+                          inactiveColor: AppTheme.surfaceContainerHighest,
+                          onChanged: (val) {
+                            setState(() => _brightness = val);
+                          },
+                          onChangeEnd: (val) {
+                            _reprocessPhoto(brightness: val);
+                          },
+                        ),
+                      ),
+                      Text(
+                        '${(_brightness * 100).toInt()}%',
+                        style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, color: AppTheme.outline),
+                      ),
+                    ],
+                  ),
+
+                  // Contrast Slider
+                  Row(
+                    children: [
+                      const Icon(Icons.contrast, size: 14, color: AppTheme.outline),
+                      const SizedBox(width: 8),
+                      const Text('Contrast', style: TextStyle(fontSize: 11, color: AppTheme.onSurfaceVariant)),
+                      Expanded(
+                        child: Slider(
+                          value: _contrast,
+                          min: 0.70,
+                          max: 1.30,
+                          divisions: 12,
+                          activeColor: AppTheme.secondary,
+                          inactiveColor: AppTheme.surfaceContainerHighest,
+                          onChanged: (val) {
+                            setState(() => _contrast = val);
+                          },
+                          onChangeEnd: (val) {
+                            _reprocessPhoto(contrast: val);
+                          },
+                        ),
+                      ),
+                      Text(
+                        '${((_contrast - 1.0) * 100).toInt()}%',
+                        style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, color: AppTheme.outline),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Virtual Formal Attire & Baby Mode Row
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Formal Attire Selector
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Virtual Formal Attire',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
+                      ),
+                      Row(
+                        children: [
+                          _buildAttireChip('None', 'none'),
+                          const SizedBox(width: 6),
+                          _buildAttireChip('👔 Navy Blazer', 'navy_suit'),
+                          const SizedBox(width: 6),
+                          _buildAttireChip('🤵 Charcoal Suit', 'charcoal_suit'),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(color: AppTheme.outlineVariant, height: 1),
+                  const SizedBox(height: 10),
+
+                  // Baby & Infant Mode Switch
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text('👶 ', style: TextStyle(fontSize: 14)),
+                              Text(
+                                'Infant & Toddler Mode',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Applies relaxed ICAO 9303 child exemptions (infants < 1 yr)',
+                            style: TextStyle(fontSize: 10, color: AppTheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                      Switch(
+                        value: _isBabyMode,
+                        activeThumbColor: AppTheme.tertiary,
+                        onChanged: (val) {
+                          _reprocessPhoto(isBabyMode: val);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
 
             // Overall Score Card
@@ -571,6 +783,36 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAttireChip(String label, String style) {
+    final isSelected = _formalAttire == style;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        _reprocessPhoto(formalAttire: style);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryContainer : AppTheme.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primary : AppTheme.outlineVariant,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? Colors.white : AppTheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }

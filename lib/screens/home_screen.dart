@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
+import '../core/localization.dart';
 import '../core/theme.dart';
 import '../models/country_spec.dart';
 import '../providers/app_providers.dart';
+import '../services/photo_composer_service.dart';
 import 'camera_studio_screen.dart';
 import 'settings_screen.dart';
 
@@ -34,9 +37,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  Future<void> _handleGenerateFamilySheet() async {
+    HapticFeedback.mediumImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Generating 4-in-1 Family Combo Sheet (10×15 cm / 300 DPI)...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    try {
+      final spec = ref.read(selectedCountrySpecProvider);
+      final sampleByteData = await rootBundle.load('assets/images/sample_portrait.png');
+      final sampleBytes = sampleByteData.buffer.asUint8List();
+
+      final sheetBytes = await PhotoComposerService.generateFamilyPrintSheet(
+        individualPhotoBytes: [sampleBytes, sampleBytes, sampleBytes, sampleBytes],
+        spec: spec,
+      );
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              sheetBytes,
+              mimeType: 'image/jpeg',
+              name: 'specpass_family_combo_sheet.jpg',
+            ),
+          ],
+          text: 'SpecPass Family 4-in-1 Print Sheet (10×15 cm / 4×6" - ${spec.countryName})',
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Family Sheet error: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    final lang = ref.watch(appLanguageProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.surface,
@@ -78,15 +121,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ],
                 ),
-                const Text(
-                  'Biometric Studio',
-                  style: TextStyle(fontSize: 11, color: AppTheme.onSurfaceVariant),
+                Text(
+                  AppStrings.get('app_subtitle', lang),
+                  style: const TextStyle(fontSize: 11, color: AppTheme.onSurfaceVariant),
                 ),
               ],
             ),
           ],
         ),
         actions: [
+          // Quick Language Switcher [EN / DE]
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ref.read(appLanguageProvider.notifier).toggle();
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.language, size: 14, color: AppTheme.secondary),
+                  const SizedBox(width: 4),
+                  Text(
+                    lang.toUpperCase(),
+                    style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
           Container(
             margin: const EdgeInsets.symmetric(vertical: 12),
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -148,10 +224,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(0, Icons.photo_camera, 'Studio'),
-                _buildNavItem(1, Icons.public, 'Standards'),
-                _buildNavItem(2, Icons.photo_library, 'Saved'),
-                _buildNavItem(3, Icons.verified_user, 'Guarantee'),
+                _buildNavItem(0, Icons.photo_camera, AppStrings.get('studio_tab', lang)),
+                _buildNavItem(1, Icons.public, AppStrings.get('standards_tab', lang)),
+                _buildNavItem(2, Icons.photo_library, AppStrings.get('saved_tab', lang)),
+                _buildNavItem(3, Icons.verified_user, AppStrings.get('guarantee_tab', lang)),
               ],
             ),
           ),
@@ -665,7 +741,77 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+
+        // Family Combo Sheet Creator Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                AppTheme.surfaceContainerHigh,
+                AppTheme.surfaceContainerLow,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.secondaryContainer.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.people, color: AppTheme.secondary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AppStrings.get('family_sheet_title', ref.watch(appLanguageProvider)),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurface),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          AppStrings.get('family_sheet_desc', ref.watch(appLanguageProvider)),
+                          style: const TextStyle(fontSize: 11, color: AppTheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _handleGenerateFamilySheet(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.secondary,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.grid_view_rounded, size: 16),
+                  label: const Text(
+                    'Generate 4-in-1 Family Print Sheet',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
 
         const Text(
           'Sample Studio Session',

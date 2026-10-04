@@ -42,6 +42,20 @@ void main() {
     await tester.tap(find.text('Studio'));
     await tester.pumpAndSettle();
     expect(find.text('United States'), findsWidgets);
+
+    // Test Language Switcher to German
+    expect(find.text('EN'), findsOneWidget);
+    await tester.tap(find.text('EN'));
+    await tester.pumpAndSettle();
+    expect(find.text('DE'), findsOneWidget);
+    expect(find.text('Biometrisches Studio'), findsOneWidget);
+    expect(find.text('Gespeichert'), findsOneWidget);
+
+    // Switch back to English
+    await tester.tap(find.text('DE'));
+    await tester.pumpAndSettle();
+    expect(find.text('EN'), findsOneWidget);
+    expect(find.text('Biometric Studio'), findsOneWidget);
   });
 }
 
