@@ -44,5 +44,6 @@ ContentType _getContentType(String path) {
   if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return ContentType('image', 'jpeg');
   if (path.endsWith('.svg')) return ContentType('image', 'svg+xml');
   if (path.endsWith('.ttf') || path.endsWith('.otf')) return ContentType('font', 'ttf');
+  if (path.endsWith('.apk')) return ContentType('application', 'vnd.android.package-archive');
   return ContentType.binary;
 }

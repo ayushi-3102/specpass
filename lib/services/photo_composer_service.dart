@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
@@ -116,19 +117,20 @@ class PhotoComposerService {
       interpolation: img.Interpolation.cubic,
     );
 
-    // Parse target background color
-    final int bgColor = _hexToColor(bgHex);
-    final img.Color bgPixel = img.ColorRgb8(
-      (bgColor >> 16) & 0xFF,
-      (bgColor >> 8) & 0xFF,
-      bgColor & 0xFF,
-    );
-
     final double sensitivity = (params['sensitivity'] as num?)?.toDouble() ?? 1.0;
     final double brightness = (params['brightness'] as num?)?.toDouble() ?? 0.0;
     final double contrast = (params['contrast'] as num?)?.toDouble() ?? 1.0;
     final bool isBabyMode = params['isBabyMode'] == true;
     final String formalAttire = params['formalAttire'] ?? 'none';
+
+    // Parse target background color (or preserve original wall if requested)
+    final bool isOriginalBg = bgHex.toLowerCase() == 'original' || sensitivity <= 0.05;
+    final int bgColor = isOriginalBg ? 0xFFFFFF : _hexToColor(bgHex);
+    final img.Color bgPixel = img.ColorRgb8(
+      (bgColor >> 16) & 0xFF,
+      (bgColor >> 8) & 0xFF,
+      bgColor & 0xFF,
+    );
 
     // Apply brightness & contrast fine-tuning
     if (brightness != 0.0 || contrast != 1.0) {
@@ -142,14 +144,16 @@ class PhotoComposerService {
 
     // -------------------------------------------------------------------------
     // BIOMETRIC BACKGROUND SEGMENTATION & REPLACEMENT
-    // Isolates the person from the background wall and renders target bg color
+    // Isolates the person from the background wall with full skin & hair protection
     // -------------------------------------------------------------------------
-    final img.Image finishedSingle = _removeBackgroundAndReplace(
-      source: resizedSingle,
-      targetBgColor: bgPixel,
-      sensitivity: sensitivity,
-      isBabyMode: isBabyMode,
-    );
+    final img.Image finishedSingle = isOriginalBg
+        ? resizedSingle
+        : _removeBackgroundAndReplace(
+            source: resizedSingle,
+            targetBgColor: bgPixel,
+            sensitivity: sensitivity,
+            isBabyMode: isBabyMode,
+          );
 
     final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
 
@@ -206,8 +210,29 @@ class PhotoComposerService {
     );
   }
 
+  /// Checks whether a given RGB pixel is human skin tone using ITU-R BT.601 chrominance
+  static bool _isSkinColor(num r, num g, num b) {
+    if (r <= 45 || g <= 30 || b <= 20) return false;
+    
+    // In typical illumination: Red is greater than Green, Green is greater than or close to Blue
+    final bool rgbOrder = (r > g) && (g >= (b - 6));
+    final num rDiff = r - g;
+    final num maxVal = math.max(r, math.max(g, b));
+    final num minVal = math.min(r, math.min(g, b));
+    
+    if (rgbOrder && rDiff >= 10 && (maxVal - minVal) >= 14) {
+      // YCbCr chrominance cluster for human skin
+      final double cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+      final double cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+      if (cb >= 70 && cb <= 140 && cr >= 128 && cr <= 185) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// On-device edge-aware flood-fill segmentation that isolates the background
-  /// and replaces it with compliant solid white or light gray.
+  /// while strictly protecting the person's face, skin, hair, and clothing.
   static img.Image _removeBackgroundAndReplace({
     required img.Image source,
     required img.Color targetBgColor,
@@ -217,14 +242,32 @@ class PhotoComposerService {
     final int width = source.width;
     final int height = source.height;
 
-    // 1. Sample background colors from top corners and perimeter
-    int sampleCount = 0;
-    double sumR = 0, sumG = 0, sumB = 0;
+    // 1. Sample true background color strictly from top-left and top-right corner patches
+    // Never sample from the top-center where the person's head/hair is located!
+    final int cornerW = (width * 0.12).round().clamp(6, 60);
+    final int cornerH = (height * 0.12).round().clamp(6, 60);
 
-    for (int y = 0; y < (height * 0.15).round(); y++) {
-      for (int x = 0; x < width; x++) {
-        if (y < (height * 0.08).round() || x < (width * 0.20).round() || x > (width * 0.80).round()) {
-          final pixel = source.getPixel(x, y);
+    double sumR = 0, sumG = 0, sumB = 0;
+    int sampleCount = 0;
+
+    // Top-left corner
+    for (int y = 0; y < cornerH; y++) {
+      for (int x = 0; x < cornerW; x++) {
+        final pixel = source.getPixel(x, y);
+        if (!_isSkinColor(pixel.r, pixel.g, pixel.b)) {
+          sumR += pixel.r;
+          sumG += pixel.g;
+          sumB += pixel.b;
+          sampleCount++;
+        }
+      }
+    }
+
+    // Top-right corner
+    for (int y = 0; y < cornerH; y++) {
+      for (int x = width - cornerW; x < width; x++) {
+        final pixel = source.getPixel(x, y);
+        if (!_isSkinColor(pixel.r, pixel.g, pixel.b)) {
           sumR += pixel.r;
           sumG += pixel.g;
           sumB += pixel.b;
@@ -237,33 +280,57 @@ class PhotoComposerService {
     final double avgR = sumR / sampleCount;
     final double avgG = sumG / sampleCount;
     final double avgB = sumB / sampleCount;
+    final double bgLuma = avgR * 0.299 + avgG * 0.587 + avgB * 0.114;
 
-    // 2. Head & Torso Protection Zone (Centered Biometric Ellipse)
-    final double centerX = width * 0.50;
-    final double centerY = height * (isBabyMode ? 0.48 : 0.44);
-    final double radiusX = width * (isBabyMode ? 0.32 : 0.28);
-    final double radiusY = height * (isBabyMode ? 0.38 : 0.34);
+    // 2. Adaptive tolerances
+    final double baseTolerance = (38.0 * sensitivity.clamp(0.4, 2.0)).clamp(16.0, 70.0);
+    final double neighborTolerance = (18.0 * sensitivity.clamp(0.4, 2.0)).clamp(8.0, 40.0);
 
-    // 3. Flood-fill background detection
+    // 3. Flood-fill background detection with skin & hair boundaries
     final List<bool> isBg = List<bool>.filled(width * height, false);
     final List<int> queue = [];
 
-    // Seed the perimeter pixels (top edge and upper 72% of sides)
+    // Helper: is pixel valid background seed candidate?
+    bool isCandidateBg(int x, int y) {
+      final p = source.getPixel(x, y);
+      if (_isSkinColor(p.r, p.g, p.b)) return false;
+      
+      final double pLuma = p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
+      // If background is light wall, dark hair / clothing must NOT be background
+      if (bgLuma > 120 && pLuma < 85) return false;
+
+      final double dr = (p.r - avgR).abs();
+      final double dg = (p.g - avgG).abs();
+      final double db = (p.b - avgB).abs();
+      final double dist = dr * 0.299 + dg * 0.587 + db * 0.114;
+      return dist < baseTolerance;
+    }
+
+    // Seed top edge corners safely (never blindly seeding hair or face in center)
     for (int x = 0; x < width; x++) {
-      queue.add(x); // y = 0
-      isBg[x] = true;
+      if (isCandidateBg(x, 0)) {
+        queue.add(x);
+        isBg[x] = true;
+      }
     }
-    for (int y = 1; y < (height * 0.72).round(); y++) {
-      queue.add(y * width); // x = 0
-      isBg[y * width] = true;
-
-      queue.add(y * width + (width - 1)); // x = width - 1
-      isBg[y * width + (width - 1)] = true;
+    // Seed sides
+    for (int y = 1; y < (height * 0.75).round(); y++) {
+      if (isCandidateBg(0, y)) {
+        queue.add(y * width);
+        isBg[y * width] = true;
+      }
+      final rightIdx = y * width + (width - 1);
+      if (isCandidateBg(width - 1, y)) {
+        queue.add(rightIdx);
+        isBg[rightIdx] = true;
+      }
     }
 
-    // Adaptive tolerance scaled by sensitivity
-    final double baseTolerance = 52.0 * sensitivity.clamp(0.6, 2.0);
-    final double neighborTolerance = 30.0 * sensitivity.clamp(0.6, 2.0);
+    // Central subject region for extra conservative boundary check
+    final int minSubjectX = (width * 0.18).round();
+    final int maxSubjectX = (width * 0.82).round();
+    final int minSubjectY = (height * 0.10).round();
+    final int maxSubjectY = (height * 0.88).round();
 
     int head = 0;
     while (head < queue.length) {
@@ -283,35 +350,41 @@ class PhotoComposerService {
         if (!isBg[nIdx]) {
           final int nx = nIdx % width;
           final int ny = nIdx ~/ width;
+          final p = source.getPixel(nx, ny);
 
-          // Protect the core facial area from being deleted
-          final double dx = (nx - centerX) / radiusX;
-          final double dy = (ny - centerY) / radiusY;
-          final bool inCoreHead = (dx * dx + dy * dy) < 0.62;
+          // Rule 1: Skin is 100% NEVER background (protects forehead, cheeks, chin, neck)
+          if (_isSkinColor(p.r, p.g, p.b)) {
+            continue;
+          }
 
-          if (!inCoreHead) {
-            final p = source.getPixel(nx, ny);
-            
-            // Distance from global background average
-            final double dr = (p.r - avgR).abs();
-            final double dg = (p.g - avgG).abs();
-            final double db = (p.b - avgB).abs();
-            final double dist = dr * 0.299 + dg * 0.587 + db * 0.114;
-            final double euclid = (dr * dr + dg * dg + db * db);
+          // Rule 2: Dark hair / eyes / beard against light background is NEVER background
+          final double pLuma = p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
+          if (bgLuma > 120 && pLuma < 85) {
+            continue;
+          }
 
-            // Local neighbor continuity difference
-            final double localDr = (p.r - currentPixel.r).abs().toDouble();
-            final double localDg = (p.g - currentPixel.g).abs().toDouble();
-            final double localDb = (p.b - currentPixel.b).abs().toDouble();
-            final double localDist = localDr * 0.299 + localDg * 0.587 + localDb * 0.114;
+          // Rule 3: Central subject protection against low-contrast edge penetration
+          final bool inSubjectZone = nx >= minSubjectX && nx <= maxSubjectX && ny >= minSubjectY && ny <= maxSubjectY;
 
-            final bool matchesGlobal = dist < baseTolerance || euclid < (baseTolerance * baseTolerance * 1.5);
-            final bool matchesLocal = localDist < neighborTolerance && dist < (baseTolerance * 1.4);
+          final double dr = (p.r - avgR).abs();
+          final double dg = (p.g - avgG).abs();
+          final double db = (p.b - avgB).abs();
+          final double dist = dr * 0.299 + dg * 0.587 + db * 0.114;
 
-            if (matchesGlobal || matchesLocal) {
-              isBg[nIdx] = true;
-              queue.add(nIdx);
-            }
+          final double localDr = (p.r - currentPixel.r).abs().toDouble();
+          final double localDg = (p.g - currentPixel.g).abs().toDouble();
+          final double localDb = (p.b - currentPixel.b).abs().toDouble();
+          final double localDist = localDr * 0.299 + localDg * 0.587 + localDb * 0.114;
+
+          final double effectiveBaseTol = inSubjectZone ? (baseTolerance * 0.82) : baseTolerance;
+          final double effectiveNeighborTol = inSubjectZone ? (neighborTolerance * 0.75) : neighborTolerance;
+
+          final bool matchesGlobal = dist < effectiveBaseTol;
+          final bool matchesLocal = localDist < effectiveNeighborTol && dist < (effectiveBaseTol * 1.25);
+
+          if (matchesGlobal && matchesLocal) {
+            isBg[nIdx] = true;
+            queue.add(nIdx);
           }
         }
       }

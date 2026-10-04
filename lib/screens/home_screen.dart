@@ -189,39 +189,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
         actions: [
-          // Quick Language Switcher [EN / DE]
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              ref.read(appLanguageProvider.notifier).toggle();
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.5)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.language, size: 14, color: AppTheme.secondary),
-                  const SizedBox(width: 4),
-                  Text(
-                    lang.toUpperCase(),
-                    style: const TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
           Container(
             margin: const EdgeInsets.symmetric(vertical: 12),
             padding: const EdgeInsets.symmetric(horizontal: 10),

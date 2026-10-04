@@ -41,6 +41,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
 
   final List<Map<String, String>> _bgOptions = [
     {'name': 'Pure White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
+    {'name': 'Original Wall', 'hex': 'original', 'subtitle': 'Preserve Real Wall'},
     {'name': 'Light Gray', 'hex': '#F0F0F0', 'subtitle': 'UK, Germany'},
     {'name': 'Off-White', 'hex': '#F8F9FA', 'subtitle': 'Universal ICAO'},
     {'name': 'Sky Blue', 'hex': '#7BD0FF', 'subtitle': 'China, Malaysia'},
@@ -442,7 +443,9 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                         ),
                       ),
                       Text(
-                        'Active: ${_activeBgHex.toUpperCase()}',
+                        _activeBgHex == 'original'
+                            ? 'ORIGINAL WALL (NATURAL)'
+                            : 'Active: ${_activeBgHex.toUpperCase()}',
                         style: const TextStyle(
                           fontFamily: 'JetBrains Mono',
                           fontSize: 10,
@@ -453,51 +456,62 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: _bgOptions.map((opt) {
-                      final isSelected = opt['hex'] == _activeBgHex;
-                      final Color displayColor = _hexToColor(opt['hex']!);
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _bgOptions.map((opt) {
+                        final isSelected = opt['hex'] == _activeBgHex;
+                        final bool isOriginal = opt['hex'] == 'original';
+                        final Color displayColor = isOriginal
+                            ? const Color(0xFF64748B)
+                            : _hexToColor(opt['hex']!);
 
-                      return GestureDetector(
-                        onTap: () => _reprocessPhoto(hex: opt['hex']!),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppTheme.surfaceContainerHigh : AppTheme.surfaceContainerLowest,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected ? AppTheme.primary : AppTheme.outlineVariant,
-                              width: isSelected ? 1.5 : 1,
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            onTap: () => _reprocessPhoto(hex: opt['hex']!),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isSelected ? AppTheme.surfaceContainerHigh : AppTheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? AppTheme.primary : AppTheme.outlineVariant,
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isOriginal)
+                                    const Icon(Icons.wallpaper, size: 14, color: Color(0xFF94A3B8))
+                                  else
+                                    Container(
+                                      width: 14,
+                                      height: 14,
+                                      decoration: BoxDecoration(
+                                        color: displayColor,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.grey, width: 0.5),
+                                      ),
+                                    ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    opt['name']!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                      color: isSelected ? AppTheme.onSurface : AppTheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 14,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color: displayColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.grey, width: 0.5),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                opt['name']!,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                  color: isSelected ? AppTheme.onSurface : AppTheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   const Divider(color: AppTheme.outlineVariant, height: 1),
@@ -515,6 +529,28 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                       ),
                       Row(
                         children: [
+                          GestureDetector(
+                            onTap: () => _reprocessPhoto(sensitivity: 0.7),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _sensitivity == 0.7 ? AppTheme.surfaceContainerHigh : AppTheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _sensitivity == 0.7 ? AppTheme.secondary : AppTheme.outlineVariant,
+                                ),
+                              ),
+                              child: Text(
+                                'Subtle / Safe',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: _sensitivity == 0.7 ? FontWeight.bold : FontWeight.normal,
+                                  color: _sensitivity == 0.7 ? AppTheme.secondary : AppTheme.outline,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
                           GestureDetector(
                             onTap: () => _reprocessPhoto(sensitivity: 1.0),
                             child: Container(
@@ -536,7 +572,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 5),
                           GestureDetector(
                             onTap: () => _reprocessPhoto(sensitivity: 1.4),
                             child: Container(
@@ -549,7 +585,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                                 ),
                               ),
                               child: Text(
-                                'Deep Cleanse (Wall Shadows)',
+                                'Deep Cleanse',
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: _sensitivity == 1.4 ? FontWeight.bold : FontWeight.normal,
