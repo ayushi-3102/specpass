@@ -10,7 +10,7 @@
     }
     try {
       selfieSegmenter = new SelfieSegmentation({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+        locateFile: (file) => `mediapipe/${file}`
       });
       selfieSegmenter.setOptions({
         modelSelection: 0, // 0 = General (accurate 256x256), 1 = Landscape
