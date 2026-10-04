@@ -10,6 +10,7 @@ class ProcessedPhotoPackage {
   final int printSheetWidth;
   final int printSheetHeight;
   final int photosOnSheet;
+  final String activeBgHex;
 
   ProcessedPhotoPackage({
     required this.singlePhotoBytes,
@@ -19,6 +20,7 @@ class ProcessedPhotoPackage {
     required this.printSheetWidth,
     required this.printSheetHeight,
     required this.photosOnSheet,
+    this.activeBgHex = '#FFFFFF',
   });
 }
 
@@ -29,6 +31,7 @@ class PhotoComposerService {
   static Future<ProcessedPhotoPackage> processPhotoBytes({
     required Uint8List rawBytes,
     required CountrySpec spec,
+    String? overrideBgHex,
   }) async {
     return compute(_processInBackground, {
       'bytes': rawBytes,
@@ -36,7 +39,7 @@ class PhotoComposerService {
       'widthMm': spec.widthMm,
       'heightMm': spec.heightMm,
       'targetDpi': spec.targetDpi,
-      'bgHex': spec.backgroundColorHex,
+      'bgHex': overrideBgHex ?? spec.backgroundColorHex,
     });
   }
 
@@ -91,7 +94,7 @@ class PhotoComposerService {
       interpolation: img.Interpolation.cubic,
     );
 
-    // Parse background color
+    // Parse target background color
     final int bgColor = _hexToColor(bgHex);
     final img.Color bgPixel = img.ColorRgb8(
       (bgColor >> 16) & 0xFF,
@@ -99,14 +102,14 @@ class PhotoComposerService {
       bgColor & 0xFF,
     );
 
-    // Create a pristine background canvas and blend
-    final img.Image finishedSingle = img.Image(
-      width: targetWidth,
-      height: targetHeight,
-      numChannels: 3,
+    // -------------------------------------------------------------------------
+    // BIOMETRIC BACKGROUND SEGMENTATION & REPLACEMENT
+    // Isolates the person from the background wall and renders target bg color
+    // -------------------------------------------------------------------------
+    final img.Image finishedSingle = _removeBackgroundAndReplace(
+      source: resizedSingle,
+      targetBgColor: bgPixel,
     );
-    img.fill(finishedSingle, color: bgPixel);
-    img.compositeImage(finishedSingle, resizedSingle, blend: img.BlendMode.direct);
 
     final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
 
@@ -154,12 +157,124 @@ class PhotoComposerService {
       printSheetWidth: sheetW,
       printSheetHeight: sheetH,
       photosOnSheet: totalPhotos,
+      activeBgHex: bgHex,
     );
+  }
+
+  /// On-device edge-aware flood-fill segmentation that isolates the background
+  /// and replaces it with compliant solid white or light gray.
+  static img.Image _removeBackgroundAndReplace({
+    required img.Image source,
+    required img.Color targetBgColor,
+  }) {
+    final int width = source.width;
+    final int height = source.height;
+
+    // 1. Sample background colors from top corners and perimeter
+    int sampleCount = 0;
+    double sumR = 0, sumG = 0, sumB = 0;
+
+    for (int y = 0; y < (height * 0.15).round(); y++) {
+      for (int x = 0; x < width; x++) {
+        if (y < (height * 0.08).round() || x < (width * 0.18).round() || x > (width * 0.82).round()) {
+          final pixel = source.getPixel(x, y);
+          sumR += pixel.r;
+          sumG += pixel.g;
+          sumB += pixel.b;
+          sampleCount++;
+        }
+      }
+    }
+
+    if (sampleCount == 0) sampleCount = 1;
+    final double avgR = sumR / sampleCount;
+    final double avgG = sumG / sampleCount;
+    final double avgB = sumB / sampleCount;
+
+    // 2. Head & Torso Protection Zone
+    final double centerX = width * 0.50;
+    final double centerY = height * 0.44;
+    final double radiusX = width * 0.28;
+    final double radiusY = height * 0.34;
+
+    // 3. Flood-fill background detection
+    final List<bool> isBg = List<bool>.filled(width * height, false);
+    final List<int> queue = [];
+
+    // Seed the perimeter pixels (top edge and upper half of sides)
+    for (int x = 0; x < width; x++) {
+      queue.add(x); // y = 0
+      isBg[x] = true;
+    }
+    for (int y = 1; y < (height * 0.70).round(); y++) {
+      queue.add(y * width); // x = 0
+      isBg[y * width] = true;
+
+      queue.add(y * width + (width - 1)); // x = width - 1
+      isBg[y * width + (width - 1)] = true;
+    }
+
+    const double baseTolerance = 52.0;
+
+    int head = 0;
+    while (head < queue.length) {
+      final int idx = queue[head++];
+      final int cx = idx % width;
+      final int cy = idx ~/ width;
+
+      final neighbors = [
+        if (cx > 0) idx - 1,
+        if (cx < width - 1) idx + 1,
+        if (cy > 0) idx - width,
+        if (cy < height - 1) idx + width,
+      ];
+
+      for (final nIdx in neighbors) {
+        if (!isBg[nIdx]) {
+          final int nx = nIdx % width;
+          final int ny = nIdx ~/ width;
+
+          // Protect the core facial area from being deleted
+          final double dx = (nx - centerX) / radiusX;
+          final double dy = (ny - centerY) / radiusY;
+          final bool inCoreHead = (dx * dx + dy * dy) < 0.65;
+
+          if (!inCoreHead) {
+            final p = source.getPixel(nx, ny);
+            final double dr = (p.r - avgR).abs();
+            final double dg = (p.g - avgG).abs();
+            final double db = (p.b - avgB).abs();
+            final double dist = dr * 0.299 + dg * 0.587 + db * 0.114;
+            final double euclid = (dr * dr + dg * dg + db * db);
+
+            if (dist < baseTolerance || euclid < (baseTolerance * baseTolerance * 1.5)) {
+              isBg[nIdx] = true;
+              queue.add(nIdx);
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Composite result with target background
+    final img.Image result = img.Image(width: width, height: height, numChannels: 3);
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int idx = y * width + x;
+        if (isBg[idx]) {
+          result.setPixel(x, y, targetBgColor);
+        } else {
+          result.setPixel(x, y, source.getPixel(x, y));
+        }
+      }
+    }
+
+    return result;
   }
 
   static void _drawDashedBorder(img.Image image, int x, int y, int w, int h) {
     final gray = img.ColorRgb8(190, 195, 205);
-    // Draw top & bottom dashed lines
     for (int i = 0; i < w; i += 8) {
       for (int k = 0; k < 4 && (i + k) < w; k++) {
         if (x + i + k < image.width && y >= 0 && y < image.height) {
@@ -170,7 +285,6 @@ class PhotoComposerService {
         }
       }
     }
-    // Draw left & right dashed lines
     for (int i = 0; i < h; i += 8) {
       for (int k = 0; k < 4 && (i + k) < h; k++) {
         if (x >= 0 && x < image.width && y + i + k < image.height) {

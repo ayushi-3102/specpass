@@ -181,6 +181,7 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
           package: package,
           spec: widget.spec,
           auditResult: audit,
+          rawBytes: rawBytes,
         ),
       ),
     );

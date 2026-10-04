@@ -11,12 +11,14 @@ class ComplianceScreen extends ConsumerStatefulWidget {
   final ProcessedPhotoPackage package;
   final CountrySpec spec;
   final ComplianceAuditResult auditResult;
+  final Uint8List rawBytes;
 
   const ComplianceScreen({
     super.key,
     required this.package,
     required this.spec,
     required this.auditResult,
+    required this.rawBytes,
   });
 
   @override
@@ -25,6 +27,55 @@ class ComplianceScreen extends ConsumerStatefulWidget {
 
 class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   bool _showBiometricOverlay = true;
+  late ProcessedPhotoPackage _currentPackage;
+  late String _activeBgHex;
+  bool _isRecomputing = false;
+
+  final List<Map<String, String>> _bgOptions = [
+    {'name': 'Pure White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
+    {'name': 'Light Gray', 'hex': '#F0F0F0', 'subtitle': 'UK, Germany'},
+    {'name': 'Off-White', 'hex': '#F8F9FA', 'subtitle': 'Universal ICAO'},
+    {'name': 'Sky Blue', 'hex': '#7BD0FF', 'subtitle': 'China, Malaysia'},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPackage = widget.package;
+    _activeBgHex = widget.package.activeBgHex;
+  }
+
+  Future<void> _changeBackground(String hex) async {
+    if (hex == _activeBgHex || _isRecomputing) return;
+    HapticFeedback.selectionClick();
+
+    setState(() {
+      _isRecomputing = true;
+      _activeBgHex = hex;
+    });
+
+    try {
+      final updated = await PhotoComposerService.processPhotoBytes(
+        rawBytes: widget.rawBytes,
+        spec: widget.spec,
+        overrideBgHex: hex,
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentPackage = updated;
+          _isRecomputing = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRecomputing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating background: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,13 +125,105 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                     fit: StackFit.expand,
                     children: [
                       Image.memory(
-                        widget.package.singlePhotoBytes,
+                        _currentPackage.singlePhotoBytes,
                         fit: BoxFit.cover,
                       ),
                       if (_showBiometricOverlay) _buildBiometricOverlay(),
+                      if (_isRecomputing)
+                        Container(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          child: const Center(
+                            child: CircularProgressIndicator(color: AppTheme.tertiary),
+                          ),
+                        ),
                     ],
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Live Background Color Presets Bar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Background Color Presets',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: AppTheme.onSurface,
+                        ),
+                      ),
+                      Text(
+                        'Active: ${_activeBgHex.toUpperCase()}',
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 10,
+                          color: AppTheme.secondary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: _bgOptions.map((opt) {
+                      final isSelected = opt['hex'] == _activeBgHex;
+                      final Color displayColor = _hexToColor(opt['hex']!);
+
+                      return GestureDetector(
+                        onTap: () => _changeBackground(opt['hex']!),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppTheme.surfaceContainerHigh : AppTheme.surfaceContainerLowest,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? AppTheme.primary : AppTheme.outlineVariant,
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: displayColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.grey, width: 0.5),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                opt['name']!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected ? AppTheme.onSurface : AppTheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -109,21 +252,17 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
-                            Text(
-                              '100% ICAO 9303 Compliant',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.onSurface,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
+                        const Text(
+                          '100% ICAO 9303 Compliant',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.onSurface,
+                            fontSize: 15,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Passes ${widget.spec.countryName} official consulate standards.',
+                          'Background neutralized & proportions verified for ${widget.spec.countryName}.',
                           style: const TextStyle(fontSize: 12, color: AppTheme.onSurfaceVariant),
                         ),
                       ],
@@ -175,7 +314,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ExportScreen(
-                        package: widget.package,
+                        package: _currentPackage,
                         spec: widget.spec,
                       ),
                     ),
@@ -262,6 +401,14 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
       ),
     );
   }
+
+  Color _hexToColor(String hex) {
+    hex = hex.replaceAll('#', '');
+    if (hex.length == 6) {
+      return Color(int.parse('FF$hex', radix: 16));
+    }
+    return Color(int.parse(hex, radix: 16));
+  }
 }
 
 class _BiometricGridPainter extends CustomPainter {
@@ -288,11 +435,11 @@ class _BiometricGridPainter extends CustomPainter {
       strokePaint,
     );
 
-    // Eye level horizontal line (approx 58% from bottom = 42% from top)
+    // Eye level horizontal line
     final eyeY = size.height * 0.42;
     canvas.drawLine(Offset(0, eyeY), Offset(size.width, eyeY), dashPaint);
 
-    // Chin level line (approx 80% from top)
+    // Chin level line
     final chinY = size.height * 0.78;
     canvas.drawLine(Offset(0, chinY), Offset(size.width, chinY), strokePaint);
 
