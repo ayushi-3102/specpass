@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme.dart';
-import 'screens/home_screen.dart';
+import 'screens/animated_opening_screen.dart';
 import 'services/purchase_service.dart';
 
 void main() async {
@@ -42,7 +42,7 @@ class SpecPassApp extends StatelessWidget {
       title: 'SpecPass',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const HomeScreen(),
+      home: const AnimatedOpeningScreen(),
     );
   }
 }

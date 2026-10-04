@@ -108,25 +108,49 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
 
   Future<void> _capturePhoto() async {
     if (_isProcessing) return;
+
+    if (_cameraController != null && _cameraController!.value.isInitialized) {
+      HapticFeedback.heavyImpact();
+      setState(() => _isProcessing = true);
+      try {
+        final XFile captured = await _cameraController!.takePicture();
+        final bytesToProcess = await captured.readAsBytes();
+        await _runProcessingPipeline(bytesToProcess);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Capture error: $e')),
+        );
+      } finally {
+        if (mounted) setState(() => _isProcessing = false);
+      }
+    } else {
+      // In web browser or when live camera stream is blocked by browser policy, open phone native camera directly!
+      await _openNativeCamera();
+    }
+  }
+
+  Future<void> _openNativeCamera() async {
+    if (_isProcessing) return;
     HapticFeedback.heavyImpact();
-    setState(() => _isProcessing = true);
 
     try {
-      Uint8List bytesToProcess;
+      final picker = ImagePicker();
+      final XFile? captured = await picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+        imageQuality: 100,
+      );
 
-      if (_cameraController != null && _cameraController!.value.isInitialized) {
-        final XFile captured = await _cameraController!.takePicture();
-        bytesToProcess = await captured.readAsBytes();
-      } else {
-        // Fallback simulator demo asset
-        bytesToProcess = await _loadSampleAssetBytes();
+      if (captured != null) {
+        setState(() => _isProcessing = true);
+        final bytes = await captured.readAsBytes();
+        await _runProcessingPipeline(bytes);
       }
-
-      await _runProcessingPipeline(bytesToProcess);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Capture error: $e')),
+        SnackBar(content: Text('Camera error: $e')),
       );
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -156,10 +180,6 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
     }
   }
 
-  Future<Uint8List> _loadSampleAssetBytes() async {
-    final byteData = await rootBundle.load('assets/images/sample_portrait.png');
-    return byteData.buffer.asUint8List();
-  }
 
   Future<void> _runProcessingPipeline(Uint8List rawBytes) async {
     final package = await PhotoComposerService.processPhotoBytes(
@@ -335,17 +355,59 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                         if (_isCameraReady && _cameraController != null)
                           CameraPreview(_cameraController!)
                         else
-                          Image.asset(
-                            'assets/images/sample_portrait.png',
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: AppTheme.surfaceContainerLow,
-                                child: const Center(
-                                  child: Icon(Icons.person, size: 80, color: AppTheme.outline),
-                                ),
-                              );
-                            },
+                          GestureDetector(
+                            onTap: _openNativeCamera,
+                            child: Container(
+                              color: AppTheme.surfaceContainerLowest,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Opacity(
+                                    opacity: 0.15,
+                                    child: Image.asset(
+                                      'assets/images/sample_portrait.png',
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: _openNativeCamera,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppTheme.primary,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                                          elevation: 8,
+                                        ),
+                                        icon: const Icon(Icons.photo_camera, size: 22),
+                                        label: const Text(
+                                          'Open Phone Camera',
+                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      OutlinedButton.icon(
+                                        onPressed: _pickFromGallery,
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: AppTheme.onSurface,
+                                          backgroundColor: AppTheme.surfaceContainerHigh.withValues(alpha: 0.8),
+                                          side: const BorderSide(color: AppTheme.outlineVariant),
+                                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                        ),
+                                        icon: const Icon(Icons.photo_library, size: 18),
+                                        label: const Text(
+                                          'Choose from Library',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
 
                         // Vignette & HUD vector overlay

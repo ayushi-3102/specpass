@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../core/localization.dart';
 import '../core/theme.dart';
+import '../models/compliance_result.dart';
 import '../models/country_spec.dart';
 import '../providers/app_providers.dart';
 import '../services/photo_composer_service.dart';
 import 'camera_studio_screen.dart';
+import 'compliance_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -35,6 +38,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         builder: (_) => CameraStudioScreen(spec: spec),
       ),
     );
+  }
+
+  Future<void> _importGalleryForSpec(CountrySpec spec) async {
+    HapticFeedback.lightImpact();
+    try {
+      final picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 100,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        await _processAndNavigate(bytes, spec);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gallery error: $e')),
+      );
+    }
+  }
+
+  Future<void> _processAndNavigate(Uint8List bytes, CountrySpec spec) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Processing biometric segmentation & solid white background...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+    try {
+      final package = await PhotoComposerService.processPhotoBytes(
+        rawBytes: bytes,
+        spec: spec,
+      );
+      final audit = ComplianceAuditResult.mockPassingResult(
+        headRatio: 0.62,
+        countryName: spec.countryName,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ComplianceScreen(
+            package: package,
+            spec: spec,
+            auditResult: audit,
+            rawBytes: bytes,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Processing error: $e')),
+      );
+    }
   }
 
   Future<void> _handleGenerateFamilySheet() async {
@@ -443,24 +502,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 18),
 
-                // Big CTA inside active card
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _launchCamera(selectedSpec),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 4,
+                // Dual Action Buttons inside active card
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: SizedBox(
+                        height: 52,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _launchCamera(selectedSpec),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 4,
+                          ),
+                          icon: const Icon(Icons.camera_alt, size: 20),
+                          label: Text(
+                            'Take Photo',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                        ),
+                      ),
                     ),
-                    icon: const Icon(Icons.camera_alt),
-                    label: Text(
-                      'Take ${selectedSpec.countryName} Photo',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: SizedBox(
+                        height: 52,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _importGalleryForSpec(selectedSpec),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.onSurface,
+                            side: const BorderSide(color: AppTheme.outlineVariant),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          icon: const Icon(Icons.photo_library_outlined, size: 18),
+                          label: const Text(
+                            'Import',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
