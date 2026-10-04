@@ -56,9 +56,9 @@
               const data = imgData.data;
               const confs = [];
               for (let i = 0; i < w * h; i++) {
-                const a = data[i * 4 + 3];
+                // MediaPipe outputs segmentation confidence in the Red channel (0 = background, 255 = subject)
                 const r = data[i * 4];
-                confs.push((a > 0 ? a : r) / 255.0);
+                confs.push(r / 255.0);
               }
               resolve({
                 width: w,
