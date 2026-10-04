@@ -70,9 +70,28 @@ class PhotoComposerService {
     // - On Web: MediaPipe Neural Selfie Segmentation via WebGL/Wasm
     // - On Mobile: Google ML Kit Selfie Segmentation
     if (!isOriginalBg) {
+      // Decode and bake EXIF orientation so neural network receives upright portrait
+      final rawDecoded = img.decodeImage(rawBytes);
+      final img.Image orientedForSeg = rawDecoded != null
+          ? img.bakeOrientation(rawDecoded)
+          : img.Image(width: 1, height: 1);
+
+      final img.Image segInput;
+      if (orientedForSeg.width > 1024 || orientedForSeg.height > 1024) {
+        final double scale = 1024.0 / math.max(orientedForSeg.width, orientedForSeg.height);
+        segInput = img.copyResize(
+          orientedForSeg,
+          width: (orientedForSeg.width * scale).round(),
+          height: (orientedForSeg.height * scale).round(),
+        );
+      } else {
+        segInput = orientedForSeg;
+      }
+      final Uint8List orientedSegBytes = Uint8List.fromList(img.encodeJpg(segInput, quality: 85));
+
       if (kIsWeb) {
         try {
-          final webMask = await getWebNeuralMask(rawBytes);
+          final webMask = await getWebNeuralMask(orientedSegBytes);
           if (webMask != null && webMask.length == 256 * 256) {
             neuralMask = webMask;
             maskW = 256;
@@ -83,22 +102,7 @@ class PhotoComposerService {
         try {
           final tempDir = await getTemporaryDirectory();
           final tempFile = File('${tempDir.path}/ml_seg_${DateTime.now().microsecondsSinceEpoch}.jpg');
-
-          // Downscale large camera photos to max 1024px before passing to ML Kit
-          // Prevents OutOfMemory on 12-50 MP mobile photos and speeds up inference by 10x
-          final decodedForSeg = img.decodeImage(rawBytes);
-          final img.Image segInput;
-          if (decodedForSeg != null && (decodedForSeg.width > 1024 || decodedForSeg.height > 1024)) {
-            final double scale = 1024.0 / math.max(decodedForSeg.width, decodedForSeg.height);
-            segInput = img.copyResize(
-              decodedForSeg,
-              width: (decodedForSeg.width * scale).round(),
-              height: (decodedForSeg.height * scale).round(),
-            );
-          } else {
-            segInput = decodedForSeg ?? img.Image(width: 1, height: 1);
-          }
-          await tempFile.writeAsBytes(img.encodeJpg(segInput, quality: 85));
+          await tempFile.writeAsBytes(orientedSegBytes);
 
           final inputImage = InputImage.fromFilePath(tempFile.path);
           final segmenter = SelfieSegmenter(
