@@ -36,6 +36,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   double _sensitivity = 1.0;
   double _brightness = 0.0;
   double _contrast = 1.0;
+  double _rotationDegrees = 0.0;
   bool _isBabyMode = false;
 
   final List<Map<String, String>> _bgOptions = [
@@ -54,6 +55,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     _sensitivity = widget.package.sensitivity;
     _brightness = widget.package.brightness;
     _contrast = widget.package.contrast;
+    _rotationDegrees = widget.package.rotationDegrees;
     _isBabyMode = widget.package.isBabyMode;
   }
 
@@ -62,12 +64,14 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     double? sensitivity,
     double? brightness,
     double? contrast,
+    double? rotationDegrees,
     bool? isBabyMode,
   }) async {
     final targetHex = hex ?? _activeBgHex;
     final targetSens = sensitivity ?? _sensitivity;
     final targetBright = brightness ?? _brightness;
     final targetContrast = contrast ?? _contrast;
+    final targetRotation = rotationDegrees ?? _rotationDegrees;
     final targetBaby = isBabyMode ?? _isBabyMode;
 
     HapticFeedback.selectionClick();
@@ -78,6 +82,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
       _sensitivity = targetSens;
       _brightness = targetBright;
       _contrast = targetContrast;
+      _rotationDegrees = targetRotation;
       _isBabyMode = targetBaby;
     });
 
@@ -89,6 +94,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         sensitivity: targetSens,
         brightness: targetBright,
         contrast: targetContrast,
+        rotationDegrees: targetRotation,
         isBabyMode: targetBaby,
       );
 
@@ -704,6 +710,121 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                       Text(
                         '${((_contrast - 1.0) * 100).toInt()}%',
                         style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, color: AppTheme.outline),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Head Tilt & Eye Horizon Leveling Card
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.screen_rotation, size: 16, color: AppTheme.tertiary),
+                          SizedBox(width: 6),
+                          Text(
+                            'Head Tilt & Horizon Leveling',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.onSurface),
+                          ),
+                        ],
+                      ),
+                      // Auto-Level Reset Button
+                      GestureDetector(
+                        onTap: () {
+                          _reprocessPhoto(rotationDegrees: 0.0);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _rotationDegrees == 0.0
+                                ? AppTheme.tertiaryContainer.withValues(alpha: 0.5)
+                                : AppTheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _rotationDegrees == 0.0 ? AppTheme.tertiary : AppTheme.outlineVariant,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline,
+                                size: 12,
+                                color: _rotationDegrees == 0.0 ? AppTheme.tertiary : AppTheme.outline,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'True Level 0°',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _rotationDegrees == 0.0 ? AppTheme.tertiary : AppTheme.outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.rotate_left, size: 20, color: AppTheme.secondary),
+                        tooltip: 'Rotate Left 1°',
+                        onPressed: () {
+                          final newRot = (_rotationDegrees - 1.0).clamp(-8.0, 8.0);
+                          _reprocessPhoto(rotationDegrees: newRot);
+                        },
+                      ),
+                      Expanded(
+                        child: Slider(
+                          value: _rotationDegrees,
+                          min: -8.0,
+                          max: 8.0,
+                          divisions: 32,
+                          activeColor: AppTheme.tertiary,
+                          inactiveColor: AppTheme.surfaceContainerHighest,
+                          onChanged: (val) {
+                            setState(() => _rotationDegrees = val);
+                          },
+                          onChangeEnd: (val) {
+                            _reprocessPhoto(rotationDegrees: val);
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.rotate_right, size: 20, color: AppTheme.secondary),
+                        tooltip: 'Rotate Right 1°',
+                        onPressed: () {
+                          final newRot = (_rotationDegrees + 1.0).clamp(-8.0, 8.0);
+                          _reprocessPhoto(rotationDegrees: newRot);
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_rotationDegrees >= 0 ? '+' : ''}${_rotationDegrees.toStringAsFixed(1)}°',
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.secondary,
+                        ),
                       ),
                     ],
                   ),

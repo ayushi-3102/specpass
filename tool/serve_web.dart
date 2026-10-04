@@ -21,15 +21,20 @@ void main() async {
     }
 
     final file = File('build/web$path');
-    if (await file.exists()) {
-      request.response.headers.contentType = _getContentType(file.path);
+    final targetFile = await file.exists() ? file : File('build/web/index.html');
+    if (await targetFile.exists()) {
+      request.response.headers.contentType = _getContentType(targetFile.path);
+      request.response.headers.contentLength = await targetFile.length();
       request.response.headers.add('Access-Control-Allow-Origin', '*');
       request.response.headers.add('Cache-Control', 'no-cache');
-      await file.openRead().pipe(request.response);
+      if (request.method.toUpperCase() == 'HEAD') {
+        await request.response.close();
+      } else {
+        await targetFile.openRead().pipe(request.response);
+      }
     } else {
-      final indexFile = File('build/web/index.html');
-      request.response.headers.contentType = ContentType.html;
-      await indexFile.openRead().pipe(request.response);
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
     }
   }
 }

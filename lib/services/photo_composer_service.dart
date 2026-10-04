@@ -11,6 +11,8 @@ import '../models/country_spec.dart';
 class ProcessedPhotoPackage {
   final Uint8List singlePhotoBytes;
   final Uint8List printSheetBytes;
+  final Uint8List digitalPortalBytes;
+  final int digitalPortalKb;
   final int singleWidth;
   final int singleHeight;
   final int printSheetWidth;
@@ -20,11 +22,14 @@ class ProcessedPhotoPackage {
   final double sensitivity;
   final double brightness;
   final double contrast;
+  final double rotationDegrees;
   final bool isBabyMode;
 
   ProcessedPhotoPackage({
     required this.singlePhotoBytes,
     required this.printSheetBytes,
+    required this.digitalPortalBytes,
+    required this.digitalPortalKb,
     required this.singleWidth,
     required this.singleHeight,
     required this.printSheetWidth,
@@ -34,6 +39,7 @@ class ProcessedPhotoPackage {
     this.sensitivity = 1.0,
     this.brightness = 0.0,
     this.contrast = 1.0,
+    this.rotationDegrees = 0.0,
     this.isBabyMode = false,
   });
 }
@@ -49,6 +55,7 @@ class PhotoComposerService {
     double sensitivity = 1.0,
     double brightness = 0.0,
     double contrast = 1.0,
+    double rotationDegrees = 0.0,
     bool isBabyMode = false,
   }) async {
     List<double>? neuralMask;
@@ -90,6 +97,8 @@ class PhotoComposerService {
     return compute(_processInBackground, {
       'bytes': rawBytes,
       'specId': spec.id,
+      'countryName': spec.countryName,
+      'formattedDimensions': spec.formattedDimensions,
       'widthMm': spec.widthMm,
       'heightMm': spec.heightMm,
       'targetDpi': spec.targetDpi,
@@ -97,6 +106,7 @@ class PhotoComposerService {
       'sensitivity': sensitivity,
       'brightness': brightness,
       'contrast': contrast,
+      'rotationDegrees': rotationDegrees,
       'isBabyMode': isBabyMode,
       'neuralMask': neuralMask,
       'maskW': maskW,
@@ -118,7 +128,13 @@ class PhotoComposerService {
     }
 
     // Fix phone orientation
-    final img.Image oriented = img.bakeOrientation(decoded);
+    img.Image oriented = img.bakeOrientation(decoded);
+
+    // Apply auto-leveling / head tilt rotation if specified
+    final double rotationDegrees = (params['rotationDegrees'] as num?)?.toDouble() ?? 0.0;
+    if (rotationDegrees.abs() > 0.01) {
+      oriented = img.copyRotate(oriented, angle: rotationDegrees, interpolation: img.Interpolation.cubic);
+    }
 
     // Calculate target single dimensions in pixels at 300 DPI
     final int targetWidth = ((widthMm / 25.4) * dpi).round();
@@ -215,6 +231,15 @@ class PhotoComposerService {
 
     final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
 
+    // Generate strict portal-compliant digital export (e.g. US DS-160 / E-Visa <240 KB @ 600x600 px)
+    final Uint8List digitalPortalBytes = optimizeForOnlinePortal(
+      source: finishedSingle,
+      targetWidth: 600,
+      targetHeight: 600,
+      maxKb: 240,
+    );
+    final int digitalPortalKb = (digitalPortalBytes.lengthInBytes / 1024).round();
+
     // ----------------------------------------------------
     // BUILD 4x6" PHARMACY PRINT SHEET (1200 x 1800 px @ 300 DPI)
     // ----------------------------------------------------
@@ -244,7 +269,7 @@ class PhotoComposerService {
 
         img.compositeImage(printSheet, finishedSingle, dstX: x, dstY: y);
 
-        // Draw thin scissor cutting outline around photo
+        // Draw enhanced scissor cutting marks and corner registration crosshairs
         _drawDashedBorder(printSheet, x - 1, y - 1, targetWidth + 2, targetHeight + 2);
       }
     }
@@ -254,6 +279,8 @@ class PhotoComposerService {
     return ProcessedPhotoPackage(
       singlePhotoBytes: singleJpgBytes,
       printSheetBytes: sheetJpgBytes,
+      digitalPortalBytes: digitalPortalBytes,
+      digitalPortalKb: digitalPortalKb,
       singleWidth: targetWidth,
       singleHeight: targetHeight,
       printSheetWidth: sheetW,
@@ -263,6 +290,7 @@ class PhotoComposerService {
       sensitivity: sensitivity,
       brightness: brightness,
       contrast: contrast,
+      rotationDegrees: rotationDegrees,
       isBabyMode: isBabyMode,
     );
   }
@@ -570,10 +598,39 @@ class PhotoComposerService {
     return result;
   }
 
+  /// Optimizes photo for strict online portal upload constraints (e.g. US DS-160, Indian e-Visa).
+  /// Enforces square pixel dimensions (600x600 px) and dynamically compresses JPEG between minKb and maxKb.
+  static Uint8List optimizeForOnlinePortal({
+    required img.Image source,
+    int targetWidth = 600,
+    int targetHeight = 600,
+    int maxKb = 240,
+  }) {
+    final img.Image portalImg = img.copyResize(
+      source,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    int quality = 92;
+    List<int> bytes = img.encodeJpg(portalImg, quality: quality);
+
+    while (bytes.length > maxKb * 1024 && quality > 35) {
+      quality -= 8;
+      bytes = img.encodeJpg(portalImg, quality: quality);
+    }
+
+    return Uint8List.fromList(bytes);
+  }
+
   static void _drawDashedBorder(img.Image image, int x, int y, int w, int h) {
     final gray = img.ColorRgb8(190, 195, 205);
-    for (int i = 0; i < w; i += 8) {
-      for (int k = 0; k < 4 && (i + k) < w; k++) {
+    final darkCross = img.ColorRgb8(120, 125, 140);
+
+    // 1. Dashed border around photo perimeter
+    for (int i = 0; i < w; i += 10) {
+      for (int k = 0; k < 5 && (i + k) < w; k++) {
         if (x + i + k < image.width && y >= 0 && y < image.height) {
           image.setPixel(x + i + k, y, gray);
         }
@@ -582,14 +639,32 @@ class PhotoComposerService {
         }
       }
     }
-    for (int i = 0; i < h; i += 8) {
-      for (int k = 0; k < 4 && (i + k) < h; k++) {
+    for (int i = 0; i < h; i += 10) {
+      for (int k = 0; k < 5 && (i + k) < h; k++) {
         if (x >= 0 && x < image.width && y + i + k < image.height) {
           image.setPixel(x, y + i + k, gray);
         }
         if (x + w < image.width && y + i + k < image.height) {
           image.setPixel(x + w, y + i + k, gray);
         }
+      }
+    }
+
+    // 2. Corner registration crosshairs (extending 14px outward for ruler/scissor alignment)
+    const int crossLen = 14;
+    _drawCrosshair(image, x, y, crossLen, darkCross);
+    _drawCrosshair(image, x + w, y, crossLen, darkCross);
+    _drawCrosshair(image, x, y + h, crossLen, darkCross);
+    _drawCrosshair(image, x + w, y + h, crossLen, darkCross);
+  }
+
+  static void _drawCrosshair(img.Image image, int cx, int cy, int len, img.Color color) {
+    for (int d = -len; d <= len; d++) {
+      if (cx + d >= 0 && cx + d < image.width && cy >= 0 && cy < image.height) {
+        image.setPixel(cx + d, cy, color);
+      }
+      if (cx >= 0 && cx < image.width && cy + d >= 0 && cy + d < image.height) {
+        image.setPixel(cx, cy + d, color);
       }
     }
   }

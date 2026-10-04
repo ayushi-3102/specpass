@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +26,45 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
   bool _isCameraReady = false;
   bool _isProcessing = false;
   FlashMode _flashMode = FlashMode.auto;
+  int _timerDuration = 0; // 0 = OFF, 3 = 3s, 5 = 5s
+  int _countdownRemaining = 0;
+  bool _isCountingDown = false;
+
+  void _onShutterTapped() {
+    if (_isProcessing || _isCountingDown) return;
+    if (_timerDuration == 0) {
+      _capturePhoto();
+      return;
+    }
+
+    setState(() {
+      _isCountingDown = true;
+      _countdownRemaining = _timerDuration;
+    });
+
+    HapticFeedback.mediumImpact();
+
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_countdownRemaining <= 1) {
+        timer.cancel();
+        setState(() {
+          _isCountingDown = false;
+          _countdownRemaining = 0;
+        });
+        HapticFeedback.heavyImpact();
+        _capturePhoto();
+      } else {
+        setState(() {
+          _countdownRemaining--;
+        });
+        HapticFeedback.selectionClick();
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -266,6 +306,29 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                   ),
                   Row(
                     children: [
+                      // Self-Timer Toggle Button
+                      IconButton(
+                        icon: Icon(
+                          _timerDuration == 0
+                              ? Icons.timer_off_outlined
+                              : (_timerDuration == 3 ? Icons.timer_3 : Icons.timer),
+                          color: _timerDuration > 0 ? AppTheme.tertiary : AppTheme.onSurface,
+                          size: 20,
+                        ),
+                        tooltip: 'Self-Timer (${_timerDuration == 0 ? 'Off' : '${_timerDuration}s'})',
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            if (_timerDuration == 0) {
+                              _timerDuration = 3;
+                            } else if (_timerDuration == 3) {
+                              _timerDuration = 5;
+                            } else {
+                              _timerDuration = 0;
+                            }
+                          });
+                        },
+                      ),
                       IconButton(
                         icon: Icon(
                           _flashMode == FlashMode.auto
@@ -415,6 +478,53 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                           painter: _CameraHudPainter(),
                         ),
 
+                        if (_isCountingDown)
+                          Container(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 110,
+                                    height: 110,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppTheme.surfaceContainerLowest.withValues(alpha: 0.85),
+                                      border: Border.all(color: AppTheme.tertiary, width: 3),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppTheme.tertiary.withValues(alpha: 0.4),
+                                          blurRadius: 30,
+                                          spreadRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '$_countdownRemaining',
+                                      style: const TextStyle(
+                                        fontFamily: 'JetBrains Mono',
+                                        fontSize: 56,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.tertiary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'Hold Still & Look Straight Ahead',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
                         if (_isProcessing)
                           Container(
                             color: Colors.black.withValues(alpha: 0.75),
@@ -450,26 +560,42 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                   // Gallery Pick Button
                   IconButton(
                     icon: const Icon(Icons.photo_library_outlined, color: AppTheme.onSurface, size: 28),
-                    onPressed: _isProcessing ? null : _pickFromGallery,
+                    onPressed: _isProcessing || _isCountingDown ? null : _pickFromGallery,
                     tooltip: 'Import from Gallery',
                   ),
 
-                  // Tactile Dual-Ring Shutter Button
+                  // Tactile Dual-Ring Shutter Button with Self-Timer Indicator
                   GestureDetector(
-                    onTap: _isProcessing ? null : _capturePhoto,
+                    onTap: _isProcessing || _isCountingDown ? null : _onShutterTapped,
                     child: Container(
                       width: 76,
                       height: 76,
                       padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: AppTheme.secondary, width: 3),
+                        border: Border.all(
+                          color: _isCountingDown ? AppTheme.tertiary : AppTheme.secondary,
+                          width: 3,
+                        ),
                       ),
                       child: Container(
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white,
+                          color: _isCountingDown ? AppTheme.tertiaryContainer : Colors.white,
                         ),
+                        child: _timerDuration > 0
+                            ? Center(
+                                child: Text(
+                                  _isCountingDown ? '$_countdownRemaining' : '${_timerDuration}s',
+                                  style: TextStyle(
+                                    fontFamily: 'JetBrains Mono',
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isCountingDown ? AppTheme.tertiary : Colors.black87,
+                                  ),
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                   ),
