@@ -127,6 +127,9 @@ class PhotoComposerService {
       bgColor & 0xFF,
     );
 
+    // Apply professional studio portrait lighting and eye clarity
+    _applyStudioPortraitEnhance(resizedSingle);
+
     // Apply brightness & contrast fine-tuning
     if (brightness != 0.0 || contrast != 1.0) {
       _applyBrightnessContrast(resizedSingle, brightness, contrast);
@@ -409,13 +412,29 @@ class PhotoComposerService {
           }
 
           if (bgNeighborCount > 0) {
-            // Smooth natural feathering based on exposure to background
-            final double bgWeight = (bgNeighborCount / 8.0) * 0.40;
-            final double fgWeight = 1.0 - bgWeight;
             final srcP = source.getPixel(x, y);
-            final int blendedR = (srcP.r * fgWeight + studioR * bgWeight).round().clamp(0, 255);
-            final int blendedG = (srcP.g * fgWeight + studioG * bgWeight).round().clamp(0, 255);
-            final int blendedB = (srcP.b * fgWeight + studioB * bgWeight).round().clamp(0, 255);
+
+            // 1. Color Decontamination: Remove old wall color cast from fine edge strands
+            final double wallColorDist = (srcP.r - avgR).abs() * 0.299 + (srcP.g - avgG).abs() * 0.587 + (srcP.b - avgB).abs() * 0.114;
+            double edgeR = srcP.r.toDouble();
+            double edgeG = srcP.g.toDouble();
+            double edgeB = srcP.b.toDouble();
+
+            // If edge pixel has old wall color bleeding into it, neutralize the fringe
+            if (wallColorDist < 48.0) {
+              final double decontam = (1.0 - (wallColorDist / 48.0)) * 0.38;
+              edgeR = edgeR * (1.0 - decontam) + studioR * decontam;
+              edgeG = edgeG * (1.0 - decontam) + studioG * decontam;
+              edgeB = edgeB * (1.0 - decontam) + studioB * decontam;
+            }
+
+            // 2. Optical Studio Light-Wrap:
+            // High-end photo studios have light wrapping naturally around the subject's edges
+            final double bgWeight = (bgNeighborCount / 8.0) * 0.45;
+            final double fgWeight = 1.0 - bgWeight;
+            final int blendedR = (edgeR * fgWeight + studioR * bgWeight).round().clamp(0, 255);
+            final int blendedG = (edgeG * fgWeight + studioG * bgWeight).round().clamp(0, 255);
+            final int blendedB = (edgeB * fgWeight + studioB * bgWeight).round().clamp(0, 255);
             result.setPixelRgb(x, y, blendedR, blendedG, blendedB);
           } else {
             result.setPixel(x, y, source.getPixel(x, y));
@@ -463,6 +482,62 @@ class PhotoComposerService {
       pixel.r = r.round();
       pixel.g = g.round();
       pixel.b = b.round();
+    }
+  }
+
+  /// Enhances smartphone portraits with professional studio lighting characteristics:
+  /// 1. Studio Reflector Fill: Gently lifts deep shadows in eye sockets and under chin
+  /// 2. Highlight Protection: Keeps skin tones vibrant without blowing out highlights
+  /// 3. Crisp Eye & Facial Clarity: Calibrated unsharp mask for 300 DPI print sharpness
+  static void _applyStudioPortraitEnhance(img.Image image, {
+    double shadowLift = 0.16,
+    double clarity = 0.14,
+  }) {
+    final int width = image.width;
+    final int height = image.height;
+
+    // Step 1: Shadow Fill (Reflector flash simulation)
+    for (final pixel in image) {
+      final double luma = pixel.r * 0.299 + pixel.g * 0.587 + pixel.b * 0.114;
+      // Gentle shadow curve: lifts pixels below 135 luminance, smoothly tapering off
+      if (luma < 140.0) {
+        final double shadowFactor = (1.0 - luma / 140.0) * shadowLift;
+        final int boost = (shadowFactor * 36.0).round();
+        pixel.r = (pixel.r + boost).clamp(0, 255);
+        pixel.g = (pixel.g + boost).clamp(0, 255);
+        pixel.b = (pixel.b + boost).clamp(0, 255);
+      }
+    }
+
+    // Step 2: Unsharp clarity enhancement on facial features (3x3 kernel)
+    if (clarity > 0.02) {
+      final original = img.Image.from(image);
+      final double sharpWeight = clarity.clamp(0.05, 0.25);
+
+      for (int y = 1; y < height - 1; y++) {
+        for (int x = 1; x < width - 1; x++) {
+          final center = original.getPixel(x, y);
+          final up = original.getPixel(x, y - 1);
+          final down = original.getPixel(x, y + 1);
+          final left = original.getPixel(x - 1, y);
+          final right = original.getPixel(x + 1, y);
+
+          final double avgSurroundR = (up.r + down.r + left.r + right.r) / 4.0;
+          final double avgSurroundG = (up.g + down.g + left.g + right.g) / 4.0;
+          final double avgSurroundB = (up.b + down.b + left.b + right.b) / 4.0;
+
+          final double diffR = center.r - avgSurroundR;
+          final double diffG = center.g - avgSurroundG;
+          final double diffB = center.b - avgSurroundB;
+
+          // Limit sharpening to avoid noise halos
+          final int enhancedR = (center.r + (diffR * sharpWeight).clamp(-16.0, 16.0)).round().clamp(0, 255);
+          final int enhancedG = (center.g + (diffG * sharpWeight).clamp(-16.0, 16.0)).round().clamp(0, 255);
+          final int enhancedB = (center.b + (diffB * sharpWeight).clamp(-16.0, 16.0)).round().clamp(0, 255);
+
+          image.setPixelRgb(x, y, enhancedR, enhancedG, enhancedB);
+        }
+      }
     }
   }
 
