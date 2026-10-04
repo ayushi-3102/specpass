@@ -30,6 +30,8 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   late ProcessedPhotoPackage _currentPackage;
   late String _activeBgHex;
   bool _isRecomputing = false;
+  bool _showOriginal = false;
+  double _sensitivity = 1.0;
 
   final List<Map<String, String>> _bgOptions = [
     {'name': 'Pure White', 'hex': '#FFFFFF', 'subtitle': 'US, Schengen, India'},
@@ -43,22 +45,29 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     super.initState();
     _currentPackage = widget.package;
     _activeBgHex = widget.package.activeBgHex;
+    _sensitivity = widget.package.sensitivity;
   }
 
-  Future<void> _changeBackground(String hex) async {
-    if (hex == _activeBgHex || _isRecomputing) return;
+  Future<void> _reprocessPhoto({String? hex, double? sensitivity}) async {
+    final targetHex = hex ?? _activeBgHex;
+    final targetSens = sensitivity ?? _sensitivity;
+
+    if (targetHex == _activeBgHex && targetSens == _sensitivity && !_isRecomputing) return;
     HapticFeedback.selectionClick();
 
     setState(() {
       _isRecomputing = true;
-      _activeBgHex = hex;
+      _activeBgHex = targetHex;
+      _sensitivity = targetSens;
+      _showOriginal = false;
     });
 
     try {
       final updated = await PhotoComposerService.processPhotoBytes(
         rawBytes: widget.rawBytes,
         spec: widget.spec,
-        overrideBgHex: hex,
+        overrideBgHex: targetHex,
+        sensitivity: targetSens,
       );
 
       if (mounted) {
@@ -103,6 +112,80 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 20),
         child: Column(
           children: [
+            // Before / After View Toggle
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.outlineVariant),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (_showOriginal) {
+                        HapticFeedback.selectionClick();
+                        setState(() => _showOriginal = false);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: !_showOriginal ? AppTheme.primary : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.auto_fix_high, size: 14, color: !_showOriginal ? Colors.white : AppTheme.outline),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Biometric Compliant',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: !_showOriginal ? Colors.white : AppTheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      if (!_showOriginal) {
+                        HapticFeedback.selectionClick();
+                        setState(() => _showOriginal = true);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _showOriginal ? AppTheme.surfaceContainerHigh : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.photo, size: 14, color: _showOriginal ? AppTheme.onSurface : AppTheme.outline),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Original Shot',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _showOriginal ? AppTheme.onSurface : AppTheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             // Centered Photo Preview with Biometric Calipers
             Center(
               child: Container(
@@ -125,10 +208,37 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                     fit: StackFit.expand,
                     children: [
                       Image.memory(
-                        _currentPackage.singlePhotoBytes,
+                        _showOriginal ? widget.rawBytes : _currentPackage.singlePhotoBytes,
                         fit: BoxFit.cover,
                       ),
-                      if (_showBiometricOverlay) _buildBiometricOverlay(),
+                      if (_showBiometricOverlay && !_showOriginal) _buildBiometricOverlay(),
+                      
+                      // Bottom status pill
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.75),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _showOriginal
+                                ? 'RAW CAPTURE (UNEDITED)'
+                                : 'SOLID WHITE BG REPLACED • ICAO 9303',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: _showOriginal ? Colors.amber : AppTheme.tertiary,
+                            ),
+                          ),
+                        ),
+                      ),
+
                       if (_isRecomputing)
                         Container(
                           color: Colors.black.withValues(alpha: 0.6),
@@ -143,9 +253,9 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Live Background Color Presets Bar
+            // Live Background Color Presets & Cleanse Strength
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: AppTheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(18),
@@ -184,7 +294,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                       final Color displayColor = _hexToColor(opt['hex']!);
 
                       return GestureDetector(
-                        onTap: () => _changeBackground(opt['hex']!),
+                        onTap: () => _reprocessPhoto(hex: opt['hex']!),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -222,6 +332,69 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                         ),
                       );
                     }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(color: AppTheme.outlineVariant, height: 1),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Matting Cleanse Level',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => _reprocessPhoto(sensitivity: 1.0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _sensitivity == 1.0 ? AppTheme.surfaceContainerHigh : AppTheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _sensitivity == 1.0 ? AppTheme.secondary : AppTheme.outlineVariant,
+                                ),
+                              ),
+                              child: Text(
+                                'Balanced',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: _sensitivity == 1.0 ? FontWeight.bold : FontWeight.normal,
+                                  color: _sensitivity == 1.0 ? AppTheme.secondary : AppTheme.outline,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => _reprocessPhoto(sensitivity: 1.4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _sensitivity == 1.4 ? AppTheme.surfaceContainerHigh : AppTheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _sensitivity == 1.4 ? AppTheme.tertiary : AppTheme.outlineVariant,
+                                ),
+                              ),
+                              child: Text(
+                                'Deep Cleanse (Wall Shadows)',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: _sensitivity == 1.4 ? FontWeight.bold : FontWeight.normal,
+                                  color: _sensitivity == 1.4 ? AppTheme.tertiary : AppTheme.outline,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),

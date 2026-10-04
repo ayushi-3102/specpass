@@ -11,6 +11,7 @@ class ProcessedPhotoPackage {
   final int printSheetHeight;
   final int photosOnSheet;
   final String activeBgHex;
+  final double sensitivity;
 
   ProcessedPhotoPackage({
     required this.singlePhotoBytes,
@@ -21,6 +22,7 @@ class ProcessedPhotoPackage {
     required this.printSheetHeight,
     required this.photosOnSheet,
     this.activeBgHex = '#FFFFFF',
+    this.sensitivity = 1.0,
   });
 }
 
@@ -32,6 +34,7 @@ class PhotoComposerService {
     required Uint8List rawBytes,
     required CountrySpec spec,
     String? overrideBgHex,
+    double sensitivity = 1.0,
   }) async {
     return compute(_processInBackground, {
       'bytes': rawBytes,
@@ -40,6 +43,7 @@ class PhotoComposerService {
       'heightMm': spec.heightMm,
       'targetDpi': spec.targetDpi,
       'bgHex': overrideBgHex ?? spec.backgroundColorHex,
+      'sensitivity': sensitivity,
     });
   }
 
@@ -102,6 +106,8 @@ class PhotoComposerService {
       bgColor & 0xFF,
     );
 
+    final double sensitivity = (params['sensitivity'] as num?)?.toDouble() ?? 1.0;
+
     // -------------------------------------------------------------------------
     // BIOMETRIC BACKGROUND SEGMENTATION & REPLACEMENT
     // Isolates the person from the background wall and renders target bg color
@@ -109,6 +115,7 @@ class PhotoComposerService {
     final img.Image finishedSingle = _removeBackgroundAndReplace(
       source: resizedSingle,
       targetBgColor: bgPixel,
+      sensitivity: sensitivity,
     );
 
     final Uint8List singleJpgBytes = Uint8List.fromList(img.encodeJpg(finishedSingle, quality: 98));
@@ -158,6 +165,7 @@ class PhotoComposerService {
       printSheetHeight: sheetH,
       photosOnSheet: totalPhotos,
       activeBgHex: bgHex,
+      sensitivity: sensitivity,
     );
   }
 
@@ -166,6 +174,7 @@ class PhotoComposerService {
   static img.Image _removeBackgroundAndReplace({
     required img.Image source,
     required img.Color targetBgColor,
+    double sensitivity = 1.0,
   }) {
     final int width = source.width;
     final int height = source.height;
@@ -176,7 +185,7 @@ class PhotoComposerService {
 
     for (int y = 0; y < (height * 0.15).round(); y++) {
       for (int x = 0; x < width; x++) {
-        if (y < (height * 0.08).round() || x < (width * 0.18).round() || x > (width * 0.82).round()) {
+        if (y < (height * 0.08).round() || x < (width * 0.20).round() || x > (width * 0.80).round()) {
           final pixel = source.getPixel(x, y);
           sumR += pixel.r;
           sumG += pixel.g;
@@ -191,7 +200,7 @@ class PhotoComposerService {
     final double avgG = sumG / sampleCount;
     final double avgB = sumB / sampleCount;
 
-    // 2. Head & Torso Protection Zone
+    // 2. Head & Torso Protection Zone (Centered Biometric Ellipse)
     final double centerX = width * 0.50;
     final double centerY = height * 0.44;
     final double radiusX = width * 0.28;
@@ -201,12 +210,12 @@ class PhotoComposerService {
     final List<bool> isBg = List<bool>.filled(width * height, false);
     final List<int> queue = [];
 
-    // Seed the perimeter pixels (top edge and upper half of sides)
+    // Seed the perimeter pixels (top edge and upper 72% of sides)
     for (int x = 0; x < width; x++) {
       queue.add(x); // y = 0
       isBg[x] = true;
     }
-    for (int y = 1; y < (height * 0.70).round(); y++) {
+    for (int y = 1; y < (height * 0.72).round(); y++) {
       queue.add(y * width); // x = 0
       isBg[y * width] = true;
 
@@ -214,13 +223,16 @@ class PhotoComposerService {
       isBg[y * width + (width - 1)] = true;
     }
 
-    const double baseTolerance = 52.0;
+    // Adaptive tolerance scaled by sensitivity
+    final double baseTolerance = 52.0 * sensitivity.clamp(0.6, 2.0);
+    final double neighborTolerance = 30.0 * sensitivity.clamp(0.6, 2.0);
 
     int head = 0;
     while (head < queue.length) {
       final int idx = queue[head++];
       final int cx = idx % width;
       final int cy = idx ~/ width;
+      final currentPixel = source.getPixel(cx, cy);
 
       final neighbors = [
         if (cx > 0) idx - 1,
@@ -237,17 +249,28 @@ class PhotoComposerService {
           // Protect the core facial area from being deleted
           final double dx = (nx - centerX) / radiusX;
           final double dy = (ny - centerY) / radiusY;
-          final bool inCoreHead = (dx * dx + dy * dy) < 0.65;
+          final bool inCoreHead = (dx * dx + dy * dy) < 0.62;
 
           if (!inCoreHead) {
             final p = source.getPixel(nx, ny);
+            
+            // Distance from global background average
             final double dr = (p.r - avgR).abs();
             final double dg = (p.g - avgG).abs();
             final double db = (p.b - avgB).abs();
             final double dist = dr * 0.299 + dg * 0.587 + db * 0.114;
             final double euclid = (dr * dr + dg * dg + db * db);
 
-            if (dist < baseTolerance || euclid < (baseTolerance * baseTolerance * 1.5)) {
+            // Local neighbor continuity difference
+            final double localDr = (p.r - currentPixel.r).abs().toDouble();
+            final double localDg = (p.g - currentPixel.g).abs().toDouble();
+            final double localDb = (p.b - currentPixel.b).abs().toDouble();
+            final double localDist = localDr * 0.299 + localDg * 0.587 + localDb * 0.114;
+
+            final bool matchesGlobal = dist < baseTolerance || euclid < (baseTolerance * baseTolerance * 1.5);
+            final bool matchesLocal = localDist < neighborTolerance && dist < (baseTolerance * 1.4);
+
+            if (matchesGlobal || matchesLocal) {
               isBg[nIdx] = true;
               queue.add(nIdx);
             }
@@ -256,7 +279,7 @@ class PhotoComposerService {
       }
     }
 
-    // 4. Composite result with target background
+    // 4. Composite result with soft edge antialiasing
     final img.Image result = img.Image(width: width, height: height, numChannels: 3);
 
     for (int y = 0; y < height; y++) {
@@ -265,7 +288,23 @@ class PhotoComposerService {
         if (isBg[idx]) {
           result.setPixel(x, y, targetBgColor);
         } else {
-          result.setPixel(x, y, source.getPixel(x, y));
+          // Check if boundary pixel next to background for soft feathering
+          int bgNeighborCount = 0;
+          if (x > 0 && isBg[idx - 1]) bgNeighborCount++;
+          if (x < width - 1 && isBg[idx + 1]) bgNeighborCount++;
+          if (y > 0 && isBg[idx - width]) bgNeighborCount++;
+          if (y < height - 1 && isBg[idx + width]) bgNeighborCount++;
+
+          if (bgNeighborCount >= 2) {
+            // Soft 15% edge blend with target background
+            final srcP = source.getPixel(x, y);
+            final blendedR = (srcP.r * 0.85 + targetBgColor.r * 0.15).round();
+            final blendedG = (srcP.g * 0.85 + targetBgColor.g * 0.15).round();
+            final blendedB = (srcP.b * 0.85 + targetBgColor.b * 0.15).round();
+            result.setPixelRgb(x, y, blendedR, blendedG, blendedB);
+          } else {
+            result.setPixel(x, y, source.getPixel(x, y));
+          }
         }
       }
     }
