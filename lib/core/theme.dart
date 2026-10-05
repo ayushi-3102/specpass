@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Semantic Design Palette for SpecPass supporting both
-/// Dark Obsidian and Consular Prestige Light (Stitch MCP).
+/// Semantic Classic Diplomatic Design Palette for SpecPass.
+/// Features a luxury consular aesthetic without harsh pitch-black
+/// or stark black-and-white contrast:
+/// - Diplomatic Executive: Rich Royal Midnight Navy & Antique Gold
+/// - Consular Prestige: Warm Alabaster Ivory, Diplomatic Azure & Gold Seal
 class AppPalette {
   final bool isDark;
   final Color surfaceDim;
@@ -64,27 +67,27 @@ class AppTheme {
   AppTheme._();
 
   // ---------------------------------------------------------------------------
-  // Dark Obsidian Palette (DESIGN.md)
+  // Diplomatic Executive Palette (Warm Royal Navy - Zero Pitch Black)
   // ---------------------------------------------------------------------------
-  static const Color surfaceDim = Color(0xFF0A0D14);
-  static const Color surface = Color(0xFF10131A);
-  static const Color surfaceBright = Color(0xFF363941);
-  static const Color surfaceContainerLowest = Color(0xFF0B0E15);
-  static const Color surfaceContainerLow = Color(0xFF191B23);
-  static const Color surfaceContainer = Color(0xFF1D1F27);
-  static const Color surfaceContainerHigh = Color(0xFF272A32);
-  static const Color surfaceContainerHighest = Color(0xFF32353D);
+  static const Color surfaceDim = Color(0xFF0C192E); // Deep Diplomatic Navy
+  static const Color surface = Color(0xFF11213D); // Royal Embassy Navy
+  static const Color surfaceBright = Color(0xFF243B66);
+  static const Color surfaceContainerLowest = Color(0xFF091325);
+  static const Color surfaceContainerLow = Color(0xFF152747);
+  static const Color surfaceContainer = Color(0xFF1A3057);
+  static const Color surfaceContainerHigh = Color(0xFF223C6B);
+  static const Color surfaceContainerHighest = Color(0xFF2C4A82);
 
-  static const Color onSurface = Color(0xFFF8FAFC);
-  static const Color onSurfaceVariant = Color(0xFF94A3B8);
-  static const Color outline = Color(0xFF8C909F);
-  static const Color outlineVariant = Color(0xFF1E2638);
+  static const Color onSurface = Color(0xFFEDF2F9); // Soft Alabaster White
+  static const Color onSurfaceVariant = Color(0xFF98ACC8); // Warm Slate Blue
+  static const Color outline = Color(0xFF385382);
+  static const Color outlineVariant = Color(0xFF1D345C);
 
-  static const Color primary = Color(0xFF3B82F6); // Electric Sapphire
-  static const Color primaryContainer = Color(0xFF1E3A8A);
-  static const Color secondary = Color(0xFF38BDF8); // Sky Cyan
+  static const Color primary = Color(0xFF2563EB); // Royal Sapphire
+  static const Color primaryContainer = Color(0xFF173875);
+  static const Color secondary = Color(0xFF38BDF8); // Sky Azure
   static const Color secondaryContainer = Color(0xFF0369A1);
-  static const Color tertiary = Color(0xFF10B981); // Biometric Emerald/Mint
+  static const Color tertiary = Color(0xFF10B981); // Biometric Mint
   static const Color tertiaryContainer = Color(0xFF064E3B);
   
   static const Color goldAccent = Color(0xFFD4AF37); // Diplomatic Crest Gold
@@ -94,13 +97,13 @@ class AppTheme {
   static const Color errorContainer = Color(0xFF7F1D1D);
 
   // ---------------------------------------------------------------------------
-  // Consular Prestige Light Palette (Google Stitch MCP)
+  // Consular Prestige Classic Palette (Warm Ivory & Royal Navy - Zero Pitch Black)
   // ---------------------------------------------------------------------------
-  static const Color lightSurfaceDim = Color(0xFFF1F5F9);
-  static const Color lightSurface = Color(0xFFFAF8FF); // Pristine consular canvas
+  static const Color lightSurfaceDim = Color(0xFFEEF2F7);
+  static const Color lightSurface = Color(0xFFF7F9FC); // Warm Consular Canvas
   static const Color lightSurfaceBright = Color(0xFFFFFFFF);
   static const Color lightSurfaceContainerLowest = Color(0xFFFFFFFF);
-  static const Color lightSurfaceContainerLow = Color(0xFFF8FAFC);
+  static const Color lightSurfaceContainerLow = Color(0xFFF1F4F9);
   static const Color lightSurfaceContainer = Color(0xFFFFFFFF);
   static const Color lightSurfaceContainerHigh = Color(0xFFE2E8F0);
   static const Color lightSurfaceContainerHighest = Color(0xFFCBD5E1);
@@ -182,7 +185,7 @@ class AppTheme {
   static AppPalette colors(BuildContext context) => of(context);
 
   // ---------------------------------------------------------------------------
-  // Dark Theme
+  // Dark Theme: Diplomatic Executive Navy
   // ---------------------------------------------------------------------------
   static ThemeData get darkTheme {
     return ThemeData(
@@ -267,7 +270,7 @@ class AppTheme {
         elevation: 0,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: surfaceDim.withValues(alpha: 0.85),
+        backgroundColor: surfaceDim.withValues(alpha: 0.90),
         elevation: 0,
         centerTitle: false,
         iconTheme: const IconThemeData(color: onSurface),
@@ -281,7 +284,7 @@ class AppTheme {
   }
 
   // ---------------------------------------------------------------------------
-  // Light Theme: Consular Prestige (Stitch MCP)
+  // Light Theme: Consular Prestige Classic
   // ---------------------------------------------------------------------------
   static ThemeData get lightTheme {
     return ThemeData(
@@ -372,7 +375,7 @@ class AppTheme {
         elevation: 0,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: lightSurface.withValues(alpha: 0.90),
+        backgroundColor: lightSurface.withValues(alpha: 0.92),
         elevation: 0,
         centerTitle: false,
         iconTheme: const IconThemeData(color: lightOnSurface),

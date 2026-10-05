@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import '../core/theme.dart';
 import '../models/compliance_result.dart';
 import '../models/country_spec.dart';
+import '../services/face_framing_service.dart';
 import '../services/photo_composer_service.dart';
 import 'compliance_screen.dart';
 
@@ -28,19 +29,62 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
   final TransformationController _transformController = TransformationController();
   double _rotationDegrees = 0.0;
   bool _isProcessing = false;
+  bool _isAutoFraming = true;
+  bool _userHasAdjusted = false;
   Size _chamberSize = const Size(360, 480);
+  BiometricFramingResult? _framingResult;
 
   @override
   void initState() {
     super.initState();
-    _autoFitInitial();
+    _transformController.addListener(_onTransformChanged);
   }
 
-  void _autoFitInitial() {
-    _transformController.value = Matrix4.identity();
+  void _onTransformChanged() {
+    if (!_isAutoFraming) {
+      _userHasAdjusted = true;
+    }
+  }
+
+  Future<void> _performAutoFraming(Size chamberSize) async {
+    _chamberSize = chamberSize;
+    _isAutoFraming = true;
+
+    final double specAspect = widget.spec.widthMm / widget.spec.heightMm;
+    final img.Image? rawDecoded = img.decodeImage(widget.rawBytes);
+    if (rawDecoded == null) return;
+    final img.Image oriented = img.bakeOrientation(rawDecoded);
+
+    final framing = await FaceFramingService.analyzeAndCalculateFraming(
+      rawBytes: widget.rawBytes,
+      spec: widget.spec,
+      rotationDegrees: _rotationDegrees,
+    );
+
+    if (!mounted) return;
+
+    final matrix = FaceFramingService.calculateAlignmentMatrix(
+      chamberSize: chamberSize,
+      specAspect: specAspect,
+      imageWidth: oriented.width,
+      imageHeight: oriented.height,
+      framing: framing,
+    );
+
+    setState(() {
+      _framingResult = framing;
+      _transformController.value = matrix;
+      _isAutoFraming = false;
+      _userHasAdjusted = false;
+    });
+  }
+
+  void _resetToAutoFraming() {
+    HapticFeedback.selectionClick();
     setState(() {
       _rotationDegrees = 0.0;
     });
+    _performAutoFraming(_chamberSize);
   }
 
   Future<void> _processAndProceed() async {
@@ -57,10 +101,13 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
         rawBytes: framedBytes,
         spec: widget.spec,
         rotationDegrees: 0.0, // Rotation is already baked into framedBytes
+        alreadyCropped: true,
       );
 
       final audit = ComplianceAuditResult.mockPassingResult(
-        headRatio: (widget.spec.headRatioMin + widget.spec.headRatioMax) / 2.0,
+        headRatio: _framingResult != null && _framingResult!.hasFace
+            ? _framingResult!.headRatio
+            : (widget.spec.headRatioMin + widget.spec.headRatioMax) / 2.0,
         countryName: widget.spec.countryName,
       );
 
@@ -99,61 +146,60 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
     final double imgW = oriented.width.toDouble();
     final double imgH = oriented.height.toDouble();
 
-    // 1. Calculate Frame Rect inside container
-    double frameW = containerSize.width * 0.88;
-    double frameH = frameW / specAspect;
-    if (frameH > containerSize.height * 0.88) {
-      frameH = containerSize.height * 0.88;
-      frameW = frameH * specAspect;
-    }
-    final frameRect = Rect.fromCenter(
-      center: Offset(containerSize.width / 2, containerSize.height / 2),
-      width: frameW,
-      height: frameH,
-    );
+    int cropX, cropY, cropW, cropH;
 
-    // 2. Un-transformed display rect of image inside container
-    final double scaleX = containerSize.width / imgW;
-    final double scaleY = containerSize.height / imgH;
-    final double baseScale = math.min(scaleX, scaleY);
-    final double displayW = imgW * baseScale;
-    final double displayH = imgH * baseScale;
-    final double displayLeft = (containerSize.width - displayW) / 2;
-    final double displayTop = (containerSize.height - displayH) / 2;
-
-    // 3. Map screen viewport back to image coordinate space
-    final Matrix4 transform = _transformController.value;
-    final Matrix4 inverse = Matrix4.tryInvert(transform) ?? Matrix4.identity();
-
-    final Offset pTopLeft = MatrixUtils.transformPoint(inverse, frameRect.topLeft);
-    final Offset pBottomRight = MatrixUtils.transformPoint(inverse, frameRect.bottomRight);
-
-    final double normLeft = (pTopLeft.dx - displayLeft) / displayW;
-    final double normTop = (pTopLeft.dy - displayTop) / displayH;
-    final double normRight = (pBottomRight.dx - displayLeft) / displayW;
-    final double normBottom = (pBottomRight.dy - displayTop) / displayH;
-
-    int cropX = (normLeft * imgW).round();
-    int cropY = (normTop * imgH).round();
-    int cropW = ((normRight - normLeft) * imgW).round();
-    int cropH = ((normBottom - normTop) * imgH).round();
-
-    // Fallback: If crop is completely out of bounds, use aspect-fit crop
-    if (cropW <= 20 || cropH <= 20 || cropX >= oriented.width || cropY >= oriented.height) {
-      cropW = oriented.width;
-      cropH = (cropW / specAspect).round();
-      if (cropH > oriented.height) {
-        cropH = oriented.height;
-        cropW = (cropH * specAspect).round();
-      }
-      cropX = (oriented.width - cropW) ~/ 2;
-      cropY = (oriented.height - cropH) ~/ 2;
+    // If the user has NOT manually dragged or pinched, use the exact mathematical consular framing!
+    if (!_userHasAdjusted && _framingResult != null) {
+      cropX = _framingResult!.cropX;
+      cropY = _framingResult!.cropY;
+      cropW = _framingResult!.cropWidth;
+      cropH = _framingResult!.cropHeight;
     } else {
-      cropX = cropX.clamp(0, oriented.width - 1);
-      cropY = cropY.clamp(0, oriented.height - 1);
-      cropW = cropW.clamp(1, oriented.width - cropX);
-      cropH = cropH.clamp(1, oriented.height - cropY);
+      // 1. Calculate Frame Rect inside container
+      double frameW = containerSize.width * 0.88;
+      double frameH = frameW / specAspect;
+      if (frameH > containerSize.height * 0.88) {
+        frameH = containerSize.height * 0.88;
+        frameW = frameH * specAspect;
+      }
+      final frameRect = Rect.fromCenter(
+        center: Offset(containerSize.width / 2, containerSize.height / 2),
+        width: frameW,
+        height: frameH,
+      );
+
+      // 2. Un-transformed display rect of image inside container
+      final double scaleX = containerSize.width / imgW;
+      final double scaleY = containerSize.height / imgH;
+      final double baseScale = math.min(scaleX, scaleY);
+      final double displayW = imgW * baseScale;
+      final double displayH = imgH * baseScale;
+      final double displayLeft = (containerSize.width - displayW) / 2;
+      final double displayTop = (containerSize.height - displayH) / 2;
+
+      // 3. Map screen viewport back to image coordinate space
+      final Matrix4 transform = _transformController.value;
+      final Matrix4 inverse = Matrix4.tryInvert(transform) ?? Matrix4.identity();
+
+      final Offset pTopLeft = MatrixUtils.transformPoint(inverse, frameRect.topLeft);
+      final Offset pBottomRight = MatrixUtils.transformPoint(inverse, frameRect.bottomRight);
+
+      final double normLeft = (pTopLeft.dx - displayLeft) / displayW;
+      final double normTop = (pTopLeft.dy - displayTop) / displayH;
+      final double normRight = (pBottomRight.dx - displayLeft) / displayW;
+      final double normBottom = (pBottomRight.dy - displayTop) / displayH;
+
+      cropX = (normLeft * imgW).round();
+      cropY = (normTop * imgH).round();
+      cropW = ((normRight - normLeft) * imgW).round();
+      cropH = ((normBottom - normTop) * imgH).round();
     }
+
+    // Safety clamping
+    cropX = cropX.clamp(0, oriented.width - 1);
+    cropY = cropY.clamp(0, oriented.height - 1);
+    cropW = cropW.clamp(20, oriented.width - cropX);
+    cropH = cropH.clamp(20, oriented.height - cropY);
 
     final cropped = img.copyCrop(
       oriented,
@@ -168,6 +214,7 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
 
   @override
   void dispose() {
+    _transformController.removeListener(_onTransformChanged);
     _transformController.dispose();
     super.dispose();
   }
@@ -176,62 +223,102 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final double specAspect = widget.spec.widthMm / widget.spec.heightMm;
+    final colors = AppTheme.colors(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.surfaceDim,
+      backgroundColor: colors.surfaceDim,
       appBar: AppBar(
-        backgroundColor: AppTheme.surfaceContainerLowest,
+        backgroundColor: colors.surfaceDim,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: AppTheme.onSurface, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: colors.onSurface, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
           children: [
-            const Text(
-              'Biometric Caliper Alignment',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              'Biometric Alignment Studio',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.onSurface),
             ),
             Text(
               '${widget.spec.countryName} • ${widget.spec.formattedDimensions}',
-              style: const TextStyle(fontSize: 11, color: AppTheme.secondary, fontFamily: 'JetBrains Mono'),
+              style: TextStyle(fontSize: 11, color: colors.secondary, fontFamily: 'JetBrains Mono'),
             ),
           ],
         ),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.restart_alt, color: AppTheme.onSurface),
-            tooltip: 'Reset Framing',
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              _autoFitInitial();
-            },
+            icon: Icon(Icons.restart_alt, color: colors.onSurface),
+            tooltip: 'Reset Auto-Framing',
+            onPressed: _resetToAutoFraming,
           ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            // Top Status Instruction Banner
+            // Top Status & AI Biometric Guidance Banner
             Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              margin: const EdgeInsets.fromLTRB(16, 6, 16, 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh.withValues(alpha: 0.85),
+                color: colors.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.outlineVariant),
+                border: Border.all(
+                  color: _framingResult?.hasFace == true
+                      ? colors.tertiary.withValues(alpha: 0.5)
+                      : colors.outlineVariant,
+                ),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.touch_app, size: 18, color: AppTheme.tertiary),
+                  Icon(
+                    _framingResult?.hasFace == true ? Icons.verified : Icons.auto_awesome,
+                    size: 18,
+                    color: _framingResult?.hasFace == true ? colors.tertiary : colors.secondary,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      'Pinch to zoom & drag your face between the Crown and Chin guidelines.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade300, height: 1.2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _framingResult?.hasFace == true
+                              ? 'Auto-Framed to ${widget.spec.countryName} Rules'
+                              : 'AI Biometric Caliper Centering',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: colors.onSurface,
+                          ),
+                        ),
+                        Text(
+                          _userHasAdjusted
+                              ? 'Custom manual adjustment applied • Tap ↺ to re-center'
+                              : 'Head sized to ${(widget.spec.headRatioMin * 100).toInt()}–${(widget.spec.headRatioMax * 100).toInt()}% • Drag or pinch to nudge',
+                          style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+                        ),
+                      ],
                     ),
                   ),
+                  if (_framingResult?.hasFace == true && !_userHasAdjusted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: colors.tertiaryContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'OPTIMAL',
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: colors.tertiary,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -243,10 +330,18 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    color: Colors.black,
+                    color: colors.surfaceContainerLowest,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
-                        _chamberSize = Size(constraints.maxWidth, constraints.maxHeight);
+                        final size = Size(constraints.maxWidth, constraints.maxHeight);
+
+                        if (_framingResult == null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted && _framingResult == null) {
+                              _performAutoFraming(size);
+                            }
+                          });
+                        }
 
                         return Stack(
                           alignment: Alignment.center,
@@ -254,9 +349,9 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
                             // Interactive Image Canvas
                             InteractiveViewer(
                               transformationController: _transformController,
-                              minScale: 0.5,
-                              maxScale: 4.0,
-                              boundaryMargin: const EdgeInsets.all(400),
+                              minScale: 0.3,
+                              maxScale: 5.0,
+                              boundaryMargin: const EdgeInsets.all(500),
                               child: Transform.rotate(
                                 angle: _rotationDegrees * (math.pi / 180.0),
                                 child: Image.memory(
@@ -274,22 +369,23 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
                                   specAspect: specAspect,
                                   headRatioMin: widget.spec.headRatioMin,
                                   headRatioMax: widget.spec.headRatioMax,
+                                  colors: colors,
                                 ),
                               ),
                             ),
 
                             if (_isProcessing)
                               Container(
-                                color: Colors.black.withValues(alpha: 0.75),
-                                child: const Center(
+                                color: colors.surfaceDim.withValues(alpha: 0.85),
+                                child: Center(
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      CircularProgressIndicator(color: AppTheme.tertiary),
-                                      SizedBox(height: 16),
+                                      CircularProgressIndicator(color: colors.tertiary),
+                                      const SizedBox(height: 16),
                                       Text(
-                                        'Applying Studio Background & Consular Sizing...',
-                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                        'Generating 300 DPI Consular Master...',
+                                        style: TextStyle(color: colors.onSurface, fontWeight: FontWeight.bold, fontSize: 13),
                                       ),
                                     ],
                                   ),
@@ -309,13 +405,13 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
               child: Row(
                 children: [
-                  const Icon(Icons.rotate_90_degrees_ccw, size: 18, color: AppTheme.outline),
+                  Icon(Icons.rotate_90_degrees_ccw, size: 18, color: colors.outline),
                   Expanded(
                     child: SliderTheme(
                       data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: AppTheme.secondary,
-                        inactiveTrackColor: AppTheme.surfaceContainerHighest,
-                        thumbColor: AppTheme.secondary,
+                        activeTrackColor: colors.secondary,
+                        inactiveTrackColor: colors.surfaceContainerHighest,
+                        thumbColor: colors.secondary,
                         trackHeight: 3,
                         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
                       ),
@@ -335,11 +431,11 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
                     child: Text(
                       '${_rotationDegrees >= 0 ? '+' : ''}${_rotationDegrees.toStringAsFixed(1)}°',
                       textAlign: TextAlign.end,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.secondary,
+                        color: colors.secondary,
                       ),
                     ),
                   ),
@@ -350,32 +446,29 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
             // Bottom Action Bar
             Container(
               padding: EdgeInsets.fromLTRB(20, 10, 20, math.max(bottomInset, 16) + 14),
-              decoration: const BoxDecoration(
-                color: AppTheme.surfaceContainerLowest,
-                border: Border(top: BorderSide(color: AppTheme.outlineVariant, width: 1)),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLow,
+                border: Border(top: BorderSide(color: colors.outlineVariant, width: 1)),
               ),
               child: Row(
                 children: [
                   OutlinedButton.icon(
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      _autoFitInitial();
-                    },
+                    onPressed: _resetToAutoFraming,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.onSurface,
-                      side: const BorderSide(color: AppTheme.outlineVariant),
+                      foregroundColor: colors.onSurface,
+                      side: BorderSide(color: colors.outlineVariant),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     icon: const Icon(Icons.center_focus_strong, size: 18),
-                    label: const Text('Reset Fit'),
+                    label: const Text('Reset Auto'),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: _isProcessing ? null : _processAndProceed,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
+                        backgroundColor: colors.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -402,11 +495,13 @@ class _BiometricCaliperPainter extends CustomPainter {
   final double specAspect;
   final double headRatioMin;
   final double headRatioMax;
+  final AppPalette colors;
 
   _BiometricCaliperPainter({
     required this.specAspect,
     required this.headRatioMin,
     required this.headRatioMax,
+    required this.colors,
   });
 
   @override
@@ -427,7 +522,7 @@ class _BiometricCaliperPainter extends CustomPainter {
     );
 
     // 2. Darken area outside the frame
-    final maskPaint = Paint()..color = Colors.black.withValues(alpha: 0.65);
+    final maskPaint = Paint()..color = colors.surfaceDim.withValues(alpha: 0.75);
     final path = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
       ..addRect(frameRect)
@@ -436,15 +531,15 @@ class _BiometricCaliperPainter extends CustomPainter {
 
     // 3. Draw Outer Border & Corner Registration Marks
     final borderPaint = Paint()
-      ..color = AppTheme.secondary
+      ..color = colors.secondary
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
 
     canvas.drawRect(frameRect, borderPaint);
 
-    // Corner brackets
+    // Corner brackets in Gold
     final cornerPaint = Paint()
-      ..color = const Color(0xFFD4AF37)
+      ..color = colors.goldAccent
       ..strokeWidth = 3.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.square;
@@ -465,32 +560,32 @@ class _BiometricCaliperPainter extends CustomPainter {
 
     // 4. Biometric Guidelines:
     final targetHeadRatio = (headRatioMin + headRatioMax) / 2.0;
-    final crownY = frameRect.top + (frameH * 0.09);
+    final crownY = frameRect.top + (frameH * 0.10);
     final chinY = crownY + (frameH * targetHeadRatio);
-    final eyeY = crownY + (frameH * targetHeadRatio * 0.44);
+    final eyeY = crownY + (frameH * targetHeadRatio * 0.42);
 
     final guidePaint = Paint()
-      ..color = AppTheme.tertiary
+      ..color = colors.tertiary
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
     final dashPaint = Paint()
-      ..color = AppTheme.secondary.withValues(alpha: 0.8)
+      ..color = colors.secondary.withValues(alpha: 0.85)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
 
     // Crown dashed line
     _drawDashedHorizontal(canvas, frameRect.left + 15, frameRect.right - 15, crownY, dashPaint);
-    _drawLabel(canvas, 'HAIR CROWN', Offset(frameRect.left + 20, crownY - 14), AppTheme.secondary);
+    _drawLabel(canvas, 'HAIR CROWN', Offset(frameRect.left + 20, crownY - 14), colors.secondary, colors);
 
     // Eye Horizon Solid Line with micro crosshair
     canvas.drawLine(Offset(frameRect.left + 10, eyeY), Offset(frameRect.right - 10, eyeY), guidePaint);
     canvas.drawLine(Offset(frameRect.center.dx, eyeY - 8), Offset(frameRect.center.dx, eyeY + 8), guidePaint);
-    _drawLabel(canvas, 'EYE HORIZON', Offset(frameRect.left + 20, eyeY - 14), AppTheme.tertiary);
+    _drawLabel(canvas, 'EYE HORIZON', Offset(frameRect.left + 20, eyeY - 14), colors.tertiary, colors);
 
     // Chin dashed line
     _drawDashedHorizontal(canvas, frameRect.left + 15, frameRect.right - 15, chinY, dashPaint);
-    _drawLabel(canvas, 'CHIN BASE', Offset(frameRect.left + 20, chinY + 4), AppTheme.secondary);
+    _drawLabel(canvas, 'CHIN BASE', Offset(frameRect.left + 20, chinY + 4), colors.secondary, colors);
 
     // Biometric Head Oval
     final headOvalRect = Rect.fromCenter(
@@ -502,7 +597,7 @@ class _BiometricCaliperPainter extends CustomPainter {
 
     // Vertical Center Symmetry Line
     final centerDashPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.25)
+      ..color = colors.onSurface.withValues(alpha: 0.25)
       ..strokeWidth = 1.0;
     _drawDashedVertical(canvas, frameRect.center.dx, frameRect.top + 10, frameRect.bottom - 10, centerDashPaint);
   }
@@ -527,7 +622,7 @@ class _BiometricCaliperPainter extends CustomPainter {
     }
   }
 
-  void _drawLabel(Canvas canvas, String text, Offset offset, Color color) {
+  void _drawLabel(Canvas canvas, String text, Offset offset, Color color, AppPalette colors) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -537,7 +632,7 @@ class _BiometricCaliperPainter extends CustomPainter {
           fontWeight: FontWeight.bold,
           color: color,
           letterSpacing: 0.6,
-          backgroundColor: Colors.black.withValues(alpha: 0.6),
+          backgroundColor: colors.surfaceDim.withValues(alpha: 0.8),
         ),
       ),
       textDirection: TextDirection.ltr,

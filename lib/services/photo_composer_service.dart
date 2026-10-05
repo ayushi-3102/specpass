@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../models/country_spec.dart';
+import 'face_framing_service.dart';
 import 'web_segmenter.dart';
 
 class ProcessedPhotoPackage {
@@ -72,6 +73,7 @@ class PhotoComposerService {
     double contrast = 1.0,
     double rotationDegrees = 0.0,
     bool isBabyMode = false,
+    bool alreadyCropped = false,
   }) async {
     List<double>? neuralMask;
     int? maskW;
@@ -148,6 +150,15 @@ class PhotoComposerService {
       }
     }
 
+    BiometricFramingResult? framing;
+    if (!alreadyCropped) {
+      framing = await FaceFramingService.analyzeAndCalculateFraming(
+        rawBytes: rawBytes,
+        spec: spec,
+        rotationDegrees: rotationDegrees,
+      );
+    }
+
     return compute(_processInBackground, {
       'bytes': rawBytes,
       'specId': spec.id,
@@ -162,6 +173,7 @@ class PhotoComposerService {
       'contrast': contrast,
       'rotationDegrees': rotationDegrees,
       'isBabyMode': isBabyMode,
+      'alreadyCropped': alreadyCropped,
       'headRatioMin': spec.headRatioMin,
       'headRatioMax': spec.headRatioMax,
       'eyeLevelMin': spec.eyeLevelMin,
@@ -170,6 +182,11 @@ class PhotoComposerService {
       'maskW': maskW,
       'maskH': maskH,
       'cutoutPngBytes': cutoutPngBytes,
+      'cropX': framing?.cropX,
+      'cropY': framing?.cropY,
+      'cropW': framing?.cropWidth,
+      'cropH': framing?.cropHeight,
+      'hasFace': framing?.hasFace ?? false,
     });
   }
 
@@ -215,16 +232,24 @@ class PhotoComposerService {
     // with 8-10% margin above hair crown and upper torso/collar clearly visible.
     // -------------------------------------------------------------------------
     int cropX, cropY, cropW, cropH;
+    final bool alreadyCropped = params['alreadyCropped'] == true;
+    final int? passedCropX = params['cropX'] as int?;
+    final int? passedCropY = params['cropY'] as int?;
+    final int? passedCropW = params['cropW'] as int?;
+    final int? passedCropH = params['cropH'] as int?;
 
-    final double orientedAspect = oriented.width / oriented.height;
-    final bool isAspectMatched = (orientedAspect - targetAspect).abs() < 0.02;
-
-    if (isAspectMatched) {
-      // Photo is ALREADY framed to the exact consular aspect ratio (from camera studio or crop screen)
+    if (alreadyCropped) {
+      // Photo was already cropped and calibrated by BiometricCropAlignScreen
       cropX = 0;
       cropY = 0;
       cropW = oriented.width;
       cropH = oriented.height;
+    } else if (passedCropX != null && passedCropY != null && passedCropW != null && passedCropH != null) {
+      // Use exact face-detected consular framing calculated by FaceFramingService
+      cropX = passedCropX.clamp(0, math.max(0, oriented.width - 1));
+      cropY = passedCropY.clamp(0, math.max(0, oriented.height - 1));
+      cropW = passedCropW.clamp(10, oriented.width - cropX);
+      cropH = passedCropH.clamp(10, oriented.height - cropY);
     } else {
       final _SubjectBounds? bounds = _detectBiometricSubjectBounds(
         oriented: oriented,

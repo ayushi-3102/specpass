@@ -97,6 +97,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         contrast: targetContrast,
         rotationDegrees: targetRotation,
         isBabyMode: targetBaby,
+        alreadyCropped: true,
       );
 
       if (mounted) {
