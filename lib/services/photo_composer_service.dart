@@ -528,30 +528,44 @@ class PhotoComposerService {
       }
     }
 
-    // 2. Fallback using skin chrominance cluster analysis
-    int skinMinX = origW, skinMaxX = 0;
-    int skinMinY = origH, skinMaxY = 0;
-    int skinCount = 0;
+    // 2. Fallback using dense skin chrominance cluster analysis (isolates face from hands/legs)
+    final List<int> skinXs = [];
+    final List<int> skinYs = [];
 
-    for (int y = 0; y < origH; y += 2) {
-      for (int x = 0; x < origW; x += 2) {
+    for (int y = 0; y < origH; y += 4) {
+      for (int x = 0; x < origW; x += 4) {
         final p = oriented.getPixel(x, y);
         if (_isSkinColor(p.r, p.g, p.b)) {
-          skinCount++;
-          if (x < skinMinX) skinMinX = x;
-          if (x > skinMaxX) skinMaxX = x;
-          if (y < skinMinY) skinMinY = y;
-          if (y > skinMaxY) skinMaxY = y;
+          skinXs.add(x);
+          skinYs.add(y);
         }
       }
     }
 
-    if (skinCount > 100 && skinMaxY > skinMinY) {
-      final int faceHeight = skinMaxY - skinMinY;
-      final int crownY = math.max(0, skinMinY - (faceHeight * 0.25).round());
-      final int chinY = skinMaxY;
-      final int headHeight = chinY - crownY;
-      final int centerX = (skinMinX + skinMaxX) ~/ 2;
+    if (skinYs.length > 50) {
+      skinYs.sort();
+      skinXs.sort();
+
+      // The head/face is the uppermost dense skin cluster
+      final int p5Y = skinYs[(skinYs.length * 0.05).round()];
+      final int p50Y = skinYs[(skinYs.length * 0.50).round()];
+      
+      // Compute face height and crown/chin anchors
+      final int faceHeight = math.max(40, p50Y - p5Y);
+      final int crownY = math.max(0, p5Y - (faceHeight * 0.28).round());
+      final int chinY = p50Y;
+      final int headHeight = math.max(50, chinY - crownY);
+
+      // Find horizontal center corresponding to head zone
+      int sumHeadX = 0, countHeadX = 0;
+      for (int i = 0; i < skinYs.length; i++) {
+        if (skinYs[i] >= p5Y && skinYs[i] <= p50Y) {
+          sumHeadX += skinXs[i];
+          countHeadX++;
+        }
+      }
+
+      final int centerX = countHeadX > 0 ? (sumHeadX ~/ countHeadX) : (origW ~/ 2);
 
       return _SubjectBounds(
         crownY: crownY,
