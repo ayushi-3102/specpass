@@ -45,6 +45,48 @@
   <script src="mediapipe/selfie_segmentation.js"></script>
   <script src="mediapipe_segmenter.js"></script>
 
+  <!-- High-Precision Studio Portrait Matting (@imgly/background-removal) -->
+  <script type="module">
+    let removeBgPromise = null;
+    async function getRemoveBg() {
+      if (!removeBgPromise) {
+        removeBgPromise = import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.8/+esm')
+          .then(m => m.removeBackground)
+          .catch(e => {
+            console.warn('[SpecPass] Error loading @imgly:', e);
+            removeBgPromise = null;
+            return null;
+          });
+      }
+      return removeBgPromise;
+    }
+
+    // Pre-warm on window load
+    window.addEventListener('load', () => { getRemoveBg(); });
+
+    window.runImglyBackgroundRemoval = async function(base64Image) {
+      try {
+        const removeBg = await getRemoveBg();
+        if (!removeBg) return null;
+
+        const blob = await removeBg(base64Image, {
+          model: 'medium',
+          output: { format: 'image/png', quality: 0.95 }
+        });
+
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        console.error('[SpecPass] runImglyBackgroundRemoval error:', err);
+        return null;
+      }
+    };
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

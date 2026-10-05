@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Biometric Studio Quality Cutout Test</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0F172A; color: white; padding: 24px; text-align: center; }
+    .card { background: #1E293B; border-radius: 16px; padding: 24px; max-width: 900px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .preview-grid { display: flex; justify-content: center; gap: 24px; margin-top: 24px; flex-wrap: wrap; }
+    .preview-box { background: #0B0F19; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+    .preview-box h3 { margin: 0 0 12px 0; font-size: 14px; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; }
+    .preview-img { width: 340px; height: 340px; object-fit: contain; border-radius: 8px; }
+    .white-bg { background: white; }
+    button { background: #38BDF8; color: #0F172A; border: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 16px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #status { margin-top: 16px; font-weight: bold; color: #38BDF8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Consular Studio Background & Fine Hair Matting</h2>
+    <p>Powered by @imgly/background-removal (100% on-device neural portrait matting)</p>
+    
+    <input type="file" id="fileInput" accept="image/*" style="margin-top: 12px;" />
+    <br/>
+    <button id="runBtn" disabled>Process Studio Cutout</button>
+    
+    <div id="status">Loading AI Matting Engine...</div>
+    
+    <div class="preview-grid">
+      <div class="preview-box">
+        <h3>Original Upload</h3>
+        <img id="origImg" class="preview-img" />
+      </div>
+      <div class="preview-box">
+        <h3>Official White Backdrop (#FFFFFF)</h3>
+        <canvas id="outCanvas" class="preview-img white-bg" width="600" height="600"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    let removeBgFn = null;
+    const statusEl = document.getElementById('status');
+    const runBtn = document.getElementById('runBtn');
+    const fileInput = document.getElementById('fileInput');
+    const origImg = document.getElementById('origImg');
+    const outCanvas = document.getElementById('outCanvas');
+    const ctx = outCanvas.getContext('2d');
+
+    try {
+      statusEl.innerText = 'Loading @imgly neural engine...';
+      const { removeBackground } = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.8/+esm');
+      removeBgFn = removeBackground;
+      statusEl.innerText = 'Ready! Select a photo to test.';
+      runBtn.disabled = false;
+    } catch (err) {
+      statusEl.innerText = 'Error loading engine: ' + err;
+      console.error(err);
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        origImg.src = URL.createObjectURL(file);
+        statusEl.innerText = 'Image loaded. Click "Process Studio Cutout".';
+      }
+    });
+
+    runBtn.addEventListener('click', async () => {
+      if (!origImg.src || !removeBgFn) return;
+      runBtn.disabled = true;
+      statusEl.innerText = 'Extracting fine hair strands & removing background...';
+
+      try {
+        const start = performance.now();
+        const blob = await removeBgFn(origImg.src, {
+          model: 'medium',
+          output: { format: 'image/png' },
+          progress: (key, current, total) => {
+            if (total > 0) {
+              statusEl.innerText = `AI Processing: ${Math.round((current / total) * 100)}% (${key})`;
+            }
+          }
+        });
+
+        const elapsed = ((performance.now() - start) / 1000).toFixed(1);
+        statusEl.innerText = `Done in ${elapsed}s! Compositing onto pure white studio backdrop...`;
+
+        const cutImg = new Image();
+        cutImg.onload = () => {
+          // 1. Fill canvas with pure white
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, 600, 600);
+
+          // 2. Draw cutout with aspect fit
+          const aspect = cutImg.width / cutImg.height;
+          let drawW = 600;
+          let drawH = 600;
+          if (aspect > 1) {
+            drawH = 600 / aspect;
+          } else {
+            drawW = 600 * aspect;
+          }
+          const drawX = (600 - drawW) / 2;
+          const drawY = (600 - drawH) / 2;
+
+          ctx.drawImage(cutImg, drawX, drawY, drawW, drawH);
+          statusEl.innerText = `Success in ${elapsed}s! Notice fine hair edges cleanly blended on pure white.`;
+          runBtn.disabled = false;
+        };
+        cutImg.src = URL.createObjectURL(blob);
+      } catch (err) {
+        statusEl.innerText = 'Processing failed: ' + err;
+        console.error(err);
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

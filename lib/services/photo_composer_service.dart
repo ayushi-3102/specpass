@@ -76,6 +76,7 @@ class PhotoComposerService {
     List<double>? neuralMask;
     int? maskW;
     int? maskH;
+    Uint8List? cutoutPngBytes;
 
     final targetHex = overrideBgHex ?? spec.backgroundColorHex;
     final bool isOriginalBg = targetHex.toLowerCase() == 'original' || sensitivity <= 0.05;
@@ -105,13 +106,19 @@ class PhotoComposerService {
 
       if (kIsWeb) {
         try {
-          final webMask = await getWebNeuralMask(orientedSegBytes);
-          if (webMask != null && webMask.length == 256 * 256) {
-            neuralMask = webMask;
-            maskW = 256;
-            maskH = 256;
-          }
+          cutoutPngBytes = await getWebImglyCutout(rawBytes);
         } catch (_) {}
+
+        if (cutoutPngBytes == null) {
+          try {
+            final webMask = await getWebNeuralMask(orientedSegBytes);
+            if (webMask != null && webMask.length == 256 * 256) {
+              neuralMask = webMask;
+              maskW = 256;
+              maskH = 256;
+            }
+          } catch (_) {}
+        }
       } else {
         try {
           final tempDir = await getTemporaryDirectory();
@@ -162,6 +169,7 @@ class PhotoComposerService {
       'neuralMask': neuralMask,
       'maskW': maskW,
       'maskH': maskH,
+      'cutoutPngBytes': cutoutPngBytes,
     });
   }
 
@@ -302,8 +310,73 @@ class PhotoComposerService {
     // 3. Otherwise -> apply color-decontaminated skin-safe flood fill
     // -------------------------------------------------------------------------
     final img.Image finishedSingle;
+    final Uint8List? cutoutPngBytes = params['cutoutPngBytes'] as Uint8List?;
+
     if (isOriginalBg) {
       finishedSingle = resizedSingle;
+    } else if (cutoutPngBytes != null) {
+      img.Image? decodedCutout;
+      try {
+        decodedCutout = img.decodePng(cutoutPngBytes);
+      } catch (_) {}
+
+      if (decodedCutout != null) {
+        final img.Image orientedCutout = img.bakeOrientation(decodedCutout);
+        final img.Image croppedCutout = img.copyCrop(
+          orientedCutout,
+          x: cropX.clamp(0, orientedCutout.width - 1),
+          y: cropY.clamp(0, orientedCutout.height - 1),
+          width: cropW.clamp(1, orientedCutout.width - cropX),
+          height: cropH.clamp(1, orientedCutout.height - cropY),
+        );
+        final img.Image resizedCutout = img.copyResize(
+          croppedCutout,
+          width: targetWidth,
+          height: targetHeight,
+          interpolation: img.Interpolation.cubic,
+        );
+
+        finishedSingle = img.Image(width: targetWidth, height: targetHeight, numChannels: 3);
+        img.fill(finishedSingle, color: bgPixel);
+
+        for (int y = 0; y < targetHeight; y++) {
+          for (int x = 0; x < targetWidth; x++) {
+            final p = resizedCutout.getPixel(x, y);
+            final double a = p.aNormalized.toDouble();
+            if (a <= 0.005) {
+              continue;
+            } else if (a >= 0.995) {
+              finishedSingle.setPixel(x, y, p);
+            } else {
+              final int r = (p.r * a + bgPixel.r * (1.0 - a)).round().clamp(0, 255);
+              final int g = (p.g * a + bgPixel.g * (1.0 - a)).round().clamp(0, 255);
+              final int b = (p.b * a + bgPixel.b * (1.0 - a)).round().clamp(0, 255);
+              finishedSingle.setPixelRgb(x, y, r, g, b);
+            }
+          }
+        }
+      } else if (neuralMask != null && maskW != null && maskH != null) {
+        finishedSingle = _applyNeuralMaskAndStudioLighting(
+          source: resizedSingle,
+          confidences: neuralMask,
+          maskWidth: maskW,
+          maskHeight: maskH,
+          targetBgColor: bgPixel,
+          cropX: cropX,
+          cropY: cropY,
+          cropW: cropW,
+          cropH: cropH,
+          originalW: oriented.width,
+          originalH: oriented.height,
+        );
+      } else {
+        finishedSingle = _removeBackgroundAndReplace(
+          source: resizedSingle,
+          targetBgColor: bgPixel,
+          sensitivity: sensitivity,
+          isBabyMode: isBabyMode,
+        );
+      }
     } else if (neuralMask != null && maskW != null && maskH != null) {
       finishedSingle = _applyNeuralMaskAndStudioLighting(
         source: resizedSingle,

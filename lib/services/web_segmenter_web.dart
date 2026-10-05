@@ -31,3 +31,26 @@ Future<List<double>?> getWebNeuralMask(Uint8List rawBytes) async {
     return null;
   }
 }
+
+@JS('runImglyBackgroundRemoval')
+external JSPromise<JSString?>? _runImglyBackgroundRemoval(JSString base64Image);
+
+Future<Uint8List?> getWebImglyCutout(Uint8List rawBytes) async {
+  try {
+    final base64Str = 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+    final promise = _runImglyBackgroundRemoval(base64Str.toJS);
+    if (promise == null) return null;
+
+    final jsStr = await promise.toDart;
+    if (jsStr == null) return null;
+
+    final dataUrl = jsStr.toDart;
+    final commaIdx = dataUrl.indexOf(',');
+    if (commaIdx == -1) return null;
+
+    return base64Decode(dataUrl.substring(commaIdx + 1));
+  } catch (_) {
+    return null;
+  }
+}
+
