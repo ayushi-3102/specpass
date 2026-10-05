@@ -5,12 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../core/localization.dart';
 import '../core/theme.dart';
-import '../models/compliance_result.dart';
 import '../models/country_spec.dart';
 import '../providers/app_providers.dart';
 import '../services/photo_composer_service.dart';
+import 'biometric_crop_align_screen.dart';
 import 'camera_studio_screen.dart';
-import 'compliance_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -61,39 +60,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _processAndNavigate(Uint8List bytes, CountrySpec spec) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Processing biometric sizing & compliance framing...'),
-        duration: Duration(seconds: 1),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BiometricCropAlignScreen(
+          rawBytes: bytes,
+          spec: spec,
+        ),
       ),
     );
-    try {
-      final package = await PhotoComposerService.processPhotoBytes(
-        rawBytes: bytes,
-        spec: spec,
-      );
-      final audit = ComplianceAuditResult.mockPassingResult(
-        headRatio: 0.62,
-        countryName: spec.countryName,
-      );
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ComplianceScreen(
-            package: package,
-            spec: spec,
-            auditResult: audit,
-            rawBytes: bytes,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Processing error: $e')),
-      );
-    }
   }
 
   Future<void> _handleGenerateFamilySheet() async {

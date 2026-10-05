@@ -1,14 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/theme.dart';
-import '../models/compliance_result.dart';
 import '../models/country_spec.dart';
-import '../services/photo_composer_service.dart';
-import 'compliance_screen.dart';
+import 'biometric_crop_align_screen.dart';
 
 class CameraStudioScreen extends ConsumerStatefulWidget {
   final CountrySpec spec;
@@ -222,26 +221,12 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
 
 
   Future<void> _runProcessingPipeline(Uint8List rawBytes) async {
-    final package = await PhotoComposerService.processPhotoBytes(
-      rawBytes: rawBytes,
-      spec: widget.spec,
-    );
-
-    final audit = ComplianceAuditResult.mockPassingResult(
-      headRatio: 0.62,
-      countryName: widget.spec.countryName,
-    );
-
-    if (!mounted) return;
-
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ComplianceScreen(
-          package: package,
-          spec: widget.spec,
-          auditResult: audit,
+        builder: (_) => BiometricCropAlignScreen(
           rawBytes: rawBytes,
+          spec: widget.spec,
         ),
       ),
     );
@@ -473,9 +458,13 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                             ),
                           ),
 
-                        // Vignette & HUD vector overlay
+                        // Consular Aspect-Ratio Viewfinder Mask & HUD vector overlay
                         CustomPaint(
-                          painter: _CameraHudPainter(),
+                          painter: _CameraHudPainter(
+                            specAspect: widget.spec.widthMm / widget.spec.heightMm,
+                            headRatioMin: widget.spec.headRatioMin,
+                            headRatioMax: widget.spec.headRatioMax,
+                          ),
                         ),
 
                         if (_isCountingDown)
@@ -673,55 +662,117 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
 }
 
 class _CameraHudPainter extends CustomPainter {
+  final double specAspect;
+  final double headRatioMin;
+  final double headRatioMax;
+
+  _CameraHudPainter({
+    required this.specAspect,
+    required this.headRatioMin,
+    required this.headRatioMax,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    final reticlePaint = Paint()
-      ..color = AppTheme.tertiary
-      ..strokeWidth = 2.5
+    // 1. Calculate the aspect-ratio frame box
+    double frameW = size.width * 0.88;
+    double frameH = frameW / specAspect;
+
+    if (frameH > size.height * 0.88) {
+      frameH = size.height * 0.88;
+      frameW = frameH * specAspect;
+    }
+
+    final frameRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: frameW,
+      height: frameH,
+    );
+
+    // 2. Darken area outside the frame
+    final maskPaint = Paint()..color = Colors.black.withValues(alpha: 0.60);
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addRect(frameRect)
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, maskPaint);
+
+    // 3. Draw Outer Border & Gold Corner Registration Marks
+    final borderPaint = Paint()
+      ..color = AppTheme.secondary
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawRect(frameRect, borderPaint);
+
+    final cornerPaint = Paint()
+      ..color = const Color(0xFFD4AF37)
+      ..strokeWidth = 3.5
       ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.square;
+
+    const cornerLen = 22.0;
+    // Top-Left
+    canvas.drawLine(Offset(frameRect.left, frameRect.top + cornerLen), Offset(frameRect.left, frameRect.top), cornerPaint);
+    canvas.drawLine(Offset(frameRect.left, frameRect.top), Offset(frameRect.left + cornerLen, frameRect.top), cornerPaint);
+    // Top-Right
+    canvas.drawLine(Offset(frameRect.right - cornerLen, frameRect.top), Offset(frameRect.right, frameRect.top), cornerPaint);
+    canvas.drawLine(Offset(frameRect.right, frameRect.top), Offset(frameRect.right, frameRect.top + cornerLen), cornerPaint);
+    // Bottom-Left
+    canvas.drawLine(Offset(frameRect.left, frameRect.bottom - cornerLen), Offset(frameRect.left, frameRect.bottom), cornerPaint);
+    canvas.drawLine(Offset(frameRect.left, frameRect.bottom), Offset(frameRect.left + cornerLen, frameRect.bottom), cornerPaint);
+    // Bottom-Right
+    canvas.drawLine(Offset(frameRect.right - cornerLen, frameRect.bottom), Offset(frameRect.right, frameRect.bottom), cornerPaint);
+    canvas.drawLine(Offset(frameRect.right, frameRect.bottom), Offset(frameRect.right, frameRect.bottom - cornerLen), cornerPaint);
+
+    // 4. Biometric Guidelines:
+    final targetHeadRatio = (headRatioMin + headRatioMax) / 2.0;
+    final crownY = frameRect.top + (frameH * 0.09);
+    final chinY = crownY + (frameH * targetHeadRatio);
+    final eyeY = crownY + (frameH * targetHeadRatio * 0.44);
 
     final guidePaint = Paint()
-      ..color = AppTheme.tertiary.withValues(alpha: 0.8)
+      ..color = AppTheme.tertiary
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
-    const cornerLength = 24.0;
-    const padding = 20.0;
+    final dashPaint = Paint()
+      ..color = AppTheme.secondary.withValues(alpha: 0.8)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
 
-    // Top-Left corner
-    canvas.drawLine(const Offset(padding, padding + cornerLength), const Offset(padding, padding), reticlePaint);
-    canvas.drawLine(const Offset(padding, padding), const Offset(padding + cornerLength, padding), reticlePaint);
+    // Crown dashed line
+    _drawDashedHorizontal(canvas, frameRect.left + 15, frameRect.right - 15, crownY, dashPaint);
 
-    // Top-Right corner
-    canvas.drawLine(Offset(size.width - padding, padding + cornerLength), Offset(size.width - padding, padding), reticlePaint);
-    canvas.drawLine(Offset(size.width - padding, padding), Offset(size.width - padding - cornerLength, padding), reticlePaint);
+    // Eye Horizon Solid Line with center crosshair
+    canvas.drawLine(Offset(frameRect.left + 10, eyeY), Offset(frameRect.right - 10, eyeY), guidePaint);
+    canvas.drawLine(Offset(frameRect.center.dx, eyeY - 8), Offset(frameRect.center.dx, eyeY + 8), guidePaint);
 
-    // Bottom-Left corner
-    canvas.drawLine(Offset(padding, size.height - padding - cornerLength), Offset(padding, size.height - padding), reticlePaint);
-    canvas.drawLine(Offset(padding, size.height - padding), Offset(padding + cornerLength, size.height - padding), reticlePaint);
+    // Chin dashed line
+    _drawDashedHorizontal(canvas, frameRect.left + 15, frameRect.right - 15, chinY, dashPaint);
 
-    // Bottom-Right corner
-    canvas.drawLine(Offset(size.width - padding, size.height - padding - cornerLength), Offset(size.width - padding, size.height - padding), reticlePaint);
-    canvas.drawLine(Offset(size.width - padding, size.height - padding), Offset(size.width - padding - cornerLength, size.height - padding), reticlePaint);
-
-    // Biometric Face Oval Target
-    final headRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.46),
-      width: size.width * 0.60,
-      height: size.height * 0.60,
+    // Biometric Head Oval
+    final headOvalRect = Rect.fromCenter(
+      center: Offset(frameRect.center.dx, (crownY + chinY) / 2),
+      width: frameW * 0.58,
+      height: chinY - crownY,
     );
-    canvas.drawOval(headRect, guidePaint);
+    canvas.drawOval(headOvalRect, dashPaint);
+  }
 
-    // Eye line
-    final eyeY = size.height * 0.40;
-    canvas.drawLine(Offset(size.width * 0.25, eyeY), Offset(size.width * 0.75, eyeY), guidePaint);
-
-    // Chin line
-    final chinY = size.height * 0.72;
-    canvas.drawLine(Offset(size.width * 0.35, chinY), Offset(size.width * 0.65, chinY), guidePaint);
+  void _drawDashedHorizontal(Canvas canvas, double x1, double x2, double y, Paint paint) {
+    const dashW = 6.0;
+    const spaceW = 4.0;
+    double startX = x1;
+    while (startX < x2) {
+      canvas.drawLine(Offset(startX, y), Offset(math.min(startX + dashW, x2), y), paint);
+      startX += dashW + spaceW;
+    }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _CameraHudPainter oldDelegate) =>
+      oldDelegate.specAspect != specAspect ||
+      oldDelegate.headRatioMin != headRatioMin ||
+      oldDelegate.headRatioMax != headRatioMax;
 }

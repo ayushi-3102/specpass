@@ -614,7 +614,7 @@ class PhotoComposerService {
 
     // 1. Scan skin pixels to establish face centroid and anatomical bounds
     int skinCount = 0;
-    double sumSkinX = 0, sumSkinY = 0;
+    double sumSkinX = 0;
     final List<int> skinXs = [];
     final List<int> skinYs = [];
 
@@ -629,7 +629,6 @@ class PhotoComposerService {
         if (_isSkinColor(p.r, p.g, p.b)) {
           skinCount++;
           sumSkinX += x;
-          sumSkinY += y;
           skinXs.add(x);
           skinYs.add(y);
         }
