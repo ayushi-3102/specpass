@@ -349,7 +349,7 @@ class _BiometricCropAlignScreenState extends ConsumerState<BiometricCropAlignScr
 
             // Bottom Action Bar
             Container(
-              padding: EdgeInsets.fromLTRB(20, 10, 20, bottomInset + 14),
+              padding: EdgeInsets.fromLTRB(20, 10, 20, math.max(bottomInset, 16) + 14),
               decoration: const BoxDecoration(
                 color: AppTheme.surfaceContainerLowest,
                 border: Border(top: BorderSide(color: AppTheme.outlineVariant, width: 1)),

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -337,7 +338,7 @@ class _ManualTouchupScreenState extends State<ManualTouchupScreen> {
 
                 // Tool Palette & Brush Settings
                 Container(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, math.max(MediaQuery.of(context).padding.bottom, 16) + 12),
                   decoration: const BoxDecoration(
                     color: Color(0xFF161B22),
                     borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -114,9 +115,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final lang = ref.watch(appLanguageProvider);
+    final colors = AppTheme.colors(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: AppTheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Row(
           children: [
@@ -124,22 +127,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: AppTheme.primaryContainer,
+                color: colors.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.shield, color: AppTheme.secondary, size: 20),
+              child: Icon(Icons.shield, color: colors.secondary, size: 20),
             ),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'SpecPass',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: colors.onSurface),
                 ),
                 Text(
                   AppStrings.get('app_subtitle', lang),
-                  style: const TextStyle(fontSize: 11, color: AppTheme.onSurfaceVariant),
+                  style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
                 ),
               ],
             ),
@@ -150,22 +153,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             margin: const EdgeInsets.symmetric(vertical: 12),
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceContainerHigh.withValues(alpha: 0.8),
+              color: colors.surfaceContainerHigh.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.lock, size: 12, color: AppTheme.tertiary),
-                SizedBox(width: 4),
+                Icon(Icons.lock, size: 12, color: colors.tertiary),
+                const SizedBox(width: 4),
                 Text(
                   '100% On-Device',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.onSurface),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colors.onSurface),
                 ),
               ],
             ),
           ),
+          // Quick Light / Dark Theme Mode Toggle
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppTheme.onSurface),
+            icon: Icon(
+              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+              color: colors.onSurface,
+            ),
+            tooltip: isDark ? 'Switch to Consular Prestige Light' : 'Switch to Obsidian Dark',
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              ref.read(themeModeProvider.notifier).toggleTheme();
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.settings_outlined, color: colors.onSurface),
             onPressed: () {
               HapticFeedback.lightImpact();
               Navigator.push(
@@ -188,13 +203,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surfaceDim.withValues(alpha: 0.95),
-          border: const Border(
-            top: BorderSide(color: AppTheme.outlineVariant, width: 1),
+          color: colors.surfaceDim.withValues(alpha: 0.95),
+          border: Border(
+            top: BorderSide(color: colors.outlineVariant, width: 1),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
+              color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.08),
               blurRadius: 12,
               offset: const Offset(0, -2),
             ),
@@ -207,10 +222,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(0, Icons.photo_camera, AppStrings.get('studio_tab', lang)),
-                _buildNavItem(1, Icons.public, AppStrings.get('standards_tab', lang)),
-                _buildNavItem(2, Icons.photo_library, AppStrings.get('saved_tab', lang)),
-                _buildNavItem(3, Icons.verified_user, AppStrings.get('guarantee_tab', lang)),
+                _buildNavItem(0, Icons.photo_camera, AppStrings.get('studio_tab', lang), colors),
+                _buildNavItem(1, Icons.public, AppStrings.get('standards_tab', lang), colors),
+                _buildNavItem(2, Icons.photo_library, AppStrings.get('saved_tab', lang), colors),
+                _buildNavItem(3, Icons.verified_user, AppStrings.get('guarantee_tab', lang), colors),
               ],
             ),
           ),
@@ -219,7 +234,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(int index, IconData icon, String label, AppPalette colors) {
     final isSelected = _currentTabIndex == index;
     return GestureDetector(
       onTap: () {
@@ -235,7 +250,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Icon(
               icon,
               size: 22,
-              color: isSelected ? AppTheme.primary : AppTheme.onSurfaceVariant,
+              color: isSelected ? colors.primary : colors.onSurfaceVariant,
             ),
             const SizedBox(height: 3),
             Text(
@@ -244,7 +259,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 fontFamily: 'JetBrains Mono',
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? AppTheme.primary : AppTheme.onSurfaceVariant,
+                color: isSelected ? colors.primary : colors.onSurfaceVariant,
               ),
             ),
           ],
@@ -261,7 +276,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final filteredSpecs = ref.watch(filteredCountrySpecsProvider);
 
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 16),
+      padding: EdgeInsets.fromLTRB(20, 12, 20, math.max(bottomInset, 16) + 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -771,7 +786,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Standards List
         Expanded(
           child: ListView.builder(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 16),
+            padding: EdgeInsets.fromLTRB(20, 0, 20, math.max(bottomInset, 16) + 32),
             itemCount: filteredSpecs.length,
             itemBuilder: (context, index) {
               final spec = filteredSpecs[index];
@@ -853,7 +868,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // ---------------------------------------------------------------------------
   Widget _buildSavedTab(double bottomInset) {
     return ListView(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 16),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, math.max(bottomInset, 16) + 32),
       children: [
         Container(
           padding: const EdgeInsets.all(16),
@@ -1045,7 +1060,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 16),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, math.max(bottomInset, 16) + 32),
       children: [
         Container(
           padding: const EdgeInsets.all(18),

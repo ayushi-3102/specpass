@@ -164,7 +164,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 20),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, math.max(bottomInset, 16) + 32),
         child: Column(
           children: [
             // 3-Mode View Toggle: Split Slider, Biometric Result, Raw Original

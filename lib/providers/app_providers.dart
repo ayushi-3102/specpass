@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/country_specs_data.dart';
 import '../models/compliance_result.dart';
 import '../models/country_spec.dart';
@@ -153,4 +155,43 @@ class BabyModeNotifier extends Notifier<bool> {
 final babyModeProvider = NotifierProvider<BabyModeNotifier, bool>(
   BabyModeNotifier.new,
 );
+
+/// Theme Mode Provider ('light', 'dark', 'system')
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  static const String _prefThemeKey = 'pref_app_theme_mode';
+
+  @override
+  ThemeMode build() {
+    _loadTheme();
+    return ThemeMode.dark; // Default to dark obsidian; user can toggle to Consular Prestige Light
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_prefThemeKey);
+    if (saved == 'light') {
+      state = ThemeMode.light;
+    } else if (saved == 'system') {
+      state = ThemeMode.system;
+    } else if (saved == 'dark') {
+      state = ThemeMode.dark;
+    }
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    state = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefThemeKey, mode.name);
+  }
+
+  Future<void> toggleTheme() async {
+    final newMode = state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    await setThemeMode(newMode);
+  }
+}
+
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
+
 

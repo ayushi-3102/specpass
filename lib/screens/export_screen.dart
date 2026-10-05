@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -203,7 +204,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 24),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, math.max(bottomInset, 16) + 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [

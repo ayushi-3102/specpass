@@ -736,7 +736,7 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> with Si
 
             // Bottom Shutter & Controls
             Padding(
-              padding: EdgeInsets.fromLTRB(24, 16, 24, bottomInset + 16),
+              padding: EdgeInsets.fromLTRB(24, 16, 24, math.max(bottomInset, 16) + 16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,16 +86,17 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    final colors = AppTheme.colors(context);
 
     return Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surfaceContainerLow,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         border: Border(
-          top: BorderSide(color: AppTheme.outlineVariant, width: 1),
+          top: BorderSide(color: colors.outlineVariant, width: 1),
         ),
       ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 16),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, math.max(bottomInset, 16) + 16),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -109,12 +111,12 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                   width: 44,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppTheme.surfaceBright,
+                    color: colors.surfaceBright,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: AppTheme.onSurfaceVariant),
+                  icon: Icon(Icons.close, color: colors.onSurfaceVariant),
                   onPressed: () => Navigator.of(context).pop(false),
                 ),
               ],
@@ -125,22 +127,22 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh,
+                color: colors.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.outlineVariant),
+                border: Border.all(color: colors.outlineVariant),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.lock_open, size: 14, color: AppTheme.secondary),
-                  SizedBox(width: 6),
+                  Icon(Icons.lock_open, size: 14, color: colors.secondary),
+                  const SizedBox(width: 6),
                   Text(
                     'SPECPASS PRO • LIFETIME',
                     style: TextStyle(
                       fontFamily: 'JetBrains Mono',
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.primary,
+                      color: colors.primary,
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -151,15 +153,19 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
 
             // Editorial Headline
             Text(
-              'Skip the \$20 Pharmacy Trip',
+              'Skip the Pharmacy & Photo Booth Trip',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineLarge,
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                color: colors.onSurface,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Official government-accepted photos generated in seconds right from home.',
+              'Official government-accepted photos generated in seconds right from your home.',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -167,9 +173,9 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainer,
+                color: colors.surfaceContainer,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.outlineVariant),
+                border: Border.all(color: colors.outlineVariant),
               ),
               child: Column(
                 children: [
@@ -177,7 +183,7 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppTheme.surfaceContainerLowest,
+                      color: colors.surfaceContainerLowest,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Row(
@@ -186,32 +192,32 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                           width: 44,
                           height: 34,
                           decoration: BoxDecoration(
-                            color: AppTheme.surfaceContainerHigh,
+                            color: colors.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.outlineVariant),
+                            border: Border.all(color: colors.outlineVariant),
                           ),
-                          child: const Icon(Icons.print, color: AppTheme.secondary, size: 20),
+                          child: Icon(Icons.print, color: colors.secondary, size: 20),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Print-Ready 4×6" Template',
+                                'Print-Ready 4×6" (10×15 cm) Template',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  color: AppTheme.onSurface,
+                                  color: colors.onSurface,
                                   fontSize: 13,
                                 ),
                               ),
                               Text(
-                                'CVS • WALGREENS • ONLY ~35¢ PRINT',
+                                'DM • ROSSMANN • CVS • WALGREENS • ONLY ~25¢',
                                 style: TextStyle(
                                   fontFamily: 'JetBrains Mono',
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
-                                  color: AppTheme.secondary,
+                                  color: colors.secondary,
                                 ),
                               ),
                             ],
@@ -220,16 +226,16 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppTheme.tertiaryContainer.withValues(alpha: 0.4),
+                            color: colors.tertiaryContainer.withValues(alpha: colors.isDark ? 0.4 : 0.8),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text(
-                            'SAVES \$19.65',
+                          child: Text(
+                            'SAVES ~\$15+',
                             style: TextStyle(
                               fontFamily: 'JetBrains Mono',
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.tertiary,
+                              color: colors.tertiary,
                             ),
                           ),
                         ),
@@ -239,18 +245,21 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                   const SizedBox(height: 16),
 
                   _buildFeatureRow(
+                    colors: colors,
                     icon: Icons.verified,
                     title: 'Unlimited 300 DPI Exports',
                     subtitle: 'Lossless, uncompressed biometrics for direct consular upload.',
                   ),
                   const SizedBox(height: 12),
                   _buildFeatureRow(
+                    colors: colors,
                     icon: Icons.public,
                     title: 'All 140+ Country Standards',
                     subtitle: 'Full access to US, EU Schengen, UK, Canada, India, and more.',
                   ),
                   const SizedBox(height: 12),
                   _buildFeatureRow(
+                    colors: colors,
                     icon: Icons.shield,
                     title: '100% On-Device & Private',
                     subtitle: 'Your facial biometrics never leave your physical device.',
@@ -260,36 +269,37 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
             ),
             const SizedBox(height: 20),
 
-            // Price Box
+            // Price Box (€6.99 / $6.99)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh,
+                color: colors.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4), width: 1.5),
+                border: Border.all(color: colors.primary.withValues(alpha: 0.5), width: 1.5),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '\$4.99 Lifetime Access',
+                        '6,99 € / \$6.99 Lifetime Access',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          color: AppTheme.onSurface,
+                          color: colors.onSurface,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        'Pay once. Own forever. No subscriptions.',
-                        style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceVariant),
+                        'Pay once. Own forever for whole family. No subscriptions.',
+                        style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
                       ),
                     ],
                   ),
-                  Icon(Icons.check_circle, color: AppTheme.tertiary, size: 24),
+                  Icon(Icons.check_circle, color: colors.tertiary, size: 24),
                 ],
               ),
             ),
@@ -302,7 +312,7 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _handlePurchase,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
+                  backgroundColor: colors.primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -316,7 +326,7 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                       )
                     : const Text(
-                        'Unlock Lifetime Access — \$4.99',
+                        'Unlock Lifetime Access — 6,99 € / \$6.99',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
               ),
@@ -329,9 +339,9 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
               children: [
                 TextButton(
                   onPressed: _isLoading ? null : _handleRestore,
-                  child: const Text('Restore Purchases', style: TextStyle(color: AppTheme.secondary, fontSize: 13)),
+                  child: Text('Restore Purchases', style: TextStyle(color: colors.secondary, fontSize: 13)),
                 ),
-                const Text('•', style: TextStyle(color: AppTheme.outline)),
+                Text('•', style: TextStyle(color: colors.outline)),
                 TextButton(
                   onPressed: () {
                     Navigator.push(
@@ -341,9 +351,9 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                       ),
                     );
                   },
-                  child: const Text('Terms of Use', style: TextStyle(color: AppTheme.onSurfaceVariant, fontSize: 13)),
+                  child: Text('Terms of Use', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13)),
                 ),
-                const Text('•', style: TextStyle(color: AppTheme.outline)),
+                Text('•', style: TextStyle(color: colors.outline)),
                 TextButton(
                   onPressed: () {
                     Navigator.push(
@@ -353,7 +363,7 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
                       ),
                     );
                   },
-                  child: const Text('Privacy Policy', style: TextStyle(color: AppTheme.onSurfaceVariant, fontSize: 13)),
+                  child: Text('Privacy Policy', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13)),
                 ),
               ],
             ),
@@ -364,6 +374,7 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
   }
 
   Widget _buildFeatureRow({
+    required AppPalette colors,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -375,10 +386,10 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: AppTheme.primaryContainer.withValues(alpha: 0.5),
+            color: colors.primaryContainer.withValues(alpha: colors.isDark ? 0.5 : 0.8),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: AppTheme.secondary, size: 16),
+          child: Icon(icon, color: colors.secondary, size: 16),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -387,17 +398,17 @@ class _PaywallModalState extends ConsumerState<PaywallModal> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.onSurface,
+                  color: colors.onSurface,
                   fontSize: 13,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: AppTheme.onSurfaceVariant,
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
                   fontSize: 12,
                   height: 1.3,
                 ),
