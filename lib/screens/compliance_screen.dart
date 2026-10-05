@@ -7,6 +7,7 @@ import '../models/compliance_result.dart';
 import '../models/country_spec.dart';
 import '../services/photo_composer_service.dart';
 import 'export_screen.dart';
+import 'manual_touchup_screen.dart';
 
 class ComplianceScreen extends ConsumerStatefulWidget {
   final ProcessedPhotoPackage package;
@@ -31,7 +32,7 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   late ProcessedPhotoPackage _currentPackage;
   late String _activeBgHex;
   bool _isRecomputing = false;
-  int _viewMode = 0; // 0 = Split Slider, 1 = Biometric Only, 2 = Original Only
+  int _viewMode = 1; // 0 = Split Slider, 1 = Biometric Only, 2 = Original Only
   double _splitRatio = 0.50; // Draggable slider position (0.0 to 1.0)
   double _sensitivity = 1.0;
   double _brightness = 0.0;
@@ -111,6 +112,32 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
           SnackBar(content: Text('Error updating photo: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _openManualTouchup() async {
+    HapticFeedback.mediumImpact();
+    final updated = await Navigator.push<ProcessedPhotoPackage>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ManualTouchupScreen(
+          package: _currentPackage,
+          spec: widget.spec,
+          rawBytes: widget.rawBytes,
+        ),
+      ),
+    );
+
+    if (updated != null && mounted) {
+      setState(() {
+        _currentPackage = updated;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✨ Manual touch-up applied successfully!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -413,6 +440,69 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
                             child: CircularProgressIndicator(color: AppTheme.tertiary),
                           ),
                         ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Manual Touch-up & Magic Eraser Action Card
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _openManualTouchup,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppTheme.secondary.withValues(alpha: 0.20),
+                        AppTheme.primary.withValues(alpha: 0.15),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.6), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.secondary.withValues(alpha: 0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.secondary.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.auto_fix_high, color: AppTheme.secondary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Magic Eraser & Touch-Up Brush',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Paint over stubborn wall spots or restore fine hair strands',
+                              style: TextStyle(fontSize: 11, color: Colors.white60),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: AppTheme.secondary, size: 20),
                     ],
                   ),
                 ),

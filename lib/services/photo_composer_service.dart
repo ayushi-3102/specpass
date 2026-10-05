@@ -45,6 +45,20 @@ class ProcessedPhotoPackage {
   });
 }
 
+class _SubjectBounds {
+  final int crownY;
+  final int chinY;
+  final int centerX;
+  final int headHeight;
+
+  _SubjectBounds({
+    required this.crownY,
+    required this.chinY,
+    required this.centerX,
+    required this.headHeight,
+  });
+}
+
 class PhotoComposerService {
   PhotoComposerService._();
 
@@ -141,6 +155,10 @@ class PhotoComposerService {
       'contrast': contrast,
       'rotationDegrees': rotationDegrees,
       'isBabyMode': isBabyMode,
+      'headRatioMin': spec.headRatioMin,
+      'headRatioMax': spec.headRatioMax,
+      'eyeLevelMin': spec.eyeLevelMin,
+      'eyeLevelMax': spec.eyeLevelMax,
       'neuralMask': neuralMask,
       'maskW': maskW,
       'maskH': maskH,
@@ -174,19 +192,70 @@ class PhotoComposerService {
     final int targetHeight = ((heightMm / 25.4) * dpi).round();
     final double targetAspect = widthMm / heightMm;
 
-    // Crop to target aspect ratio centered
-    int cropW = oriented.width;
-    int cropH = oriented.height;
-    final double currentAspect = cropW / cropH;
+    final double headRatioMin = (params['headRatioMin'] as num?)?.toDouble() ?? 0.70;
+    final double headRatioMax = (params['headRatioMax'] as num?)?.toDouble() ?? 0.80;
+    final double targetHeadRatio = (headRatioMin + headRatioMax) / 2.0;
 
-    if (currentAspect > targetAspect) {
-      cropW = (cropH * targetAspect).round();
+    final List<double>? neuralMask = params['neuralMask'] as List<double>?;
+    final int? maskW = params['maskW'] as int?;
+    final int? maskH = params['maskH'] as int?;
+
+    // -------------------------------------------------------------------------
+    // AUTO-BIOMETRIC HEAD & SHOULDER FRAMING ENGINE
+    // Calculates head height (crown to chin) and centers horizontally on face,
+    // scaling the crop box so head occupies exactly the spec's targetHeadRatio (e.g. 72%)
+    // with 8-10% margin above hair crown and upper torso/collar clearly visible.
+    // -------------------------------------------------------------------------
+    int cropX, cropY, cropW, cropH;
+
+    final _SubjectBounds? bounds = _detectBiometricSubjectBounds(
+      oriented: oriented,
+      neuralMask: neuralMask,
+      maskW: maskW,
+      maskH: maskH,
+    );
+
+    if (bounds != null && bounds.headHeight > 25) {
+      int desiredH = (bounds.headHeight / targetHeadRatio).round();
+      int desiredW = (desiredH * targetAspect).round();
+
+      // Top margin above hair crown (~8-10% of total frame height)
+      final int topMargin = (desiredH * 0.09).round();
+      int startY = bounds.crownY - topMargin;
+      int startX = (bounds.centerX - desiredW / 2).round();
+
+      // Ensure crop box fits inside the original image
+      if (desiredW > oriented.width) {
+        desiredW = oriented.width;
+        desiredH = (desiredW / targetAspect).round();
+        startX = 0;
+        startY = bounds.crownY - (desiredH * 0.09).round();
+      }
+
+      if (desiredH > oriented.height) {
+        desiredH = oriented.height;
+        desiredW = (desiredH * targetAspect).round();
+        startY = 0;
+        startX = (bounds.centerX - desiredW / 2).round();
+      }
+
+      cropX = startX.clamp(0, math.max(0, oriented.width - desiredW));
+      cropY = startY.clamp(0, math.max(0, oriented.height - desiredH));
+      cropW = math.min(desiredW, oriented.width - cropX);
+      cropH = math.min(desiredH, oriented.height - cropY);
     } else {
-      cropH = (cropW / targetAspect).round();
+      // Fallback: aspect-fit center crop
+      cropW = oriented.width;
+      cropH = oriented.height;
+      final double currentAspect = cropW / cropH;
+      if (currentAspect > targetAspect) {
+        cropW = (cropH * targetAspect).round();
+      } else {
+        cropH = (cropW / targetAspect).round();
+      }
+      cropX = (oriented.width - cropW) ~/ 2;
+      cropY = (oriented.height - cropH) ~/ 2;
     }
-
-    final int cropX = (oriented.width - cropW) ~/ 2;
-    final int cropY = (oriented.height - cropH) ~/ 2;
 
     final img.Image cropped = img.copyCrop(
       oriented,
@@ -232,10 +301,6 @@ class PhotoComposerService {
     // 2. If Neural AI Mask available -> apply Google ML Kit semantic segmentation
     // 3. Otherwise -> apply color-decontaminated skin-safe flood fill
     // -------------------------------------------------------------------------
-    final List<double>? neuralMask = params['neuralMask'] as List<double>?;
-    final int? maskW = params['maskW'] as int?;
-    final int? maskH = params['maskH'] as int?;
-
     final img.Image finishedSingle;
     if (isOriginalBg) {
       finishedSingle = resizedSingle;
@@ -364,18 +429,22 @@ class PhotoComposerService {
         final int mx = ((origX / originalW) * maskWidth).floor().clamp(0, maskWidth - 1);
 
         final double confidence = confidences[my * maskWidth + mx];
+        final p = source.getPixel(x, y);
 
-        if (confidence <= 0.08) {
+        // Dark hair protection: if pixel is deep dark hair near head area,
+        // protect from clipping even if neural confidence dipped in shadows
+        final bool isLikelyHair = (p.r < 55 && p.g < 50 && p.b < 45) && (normY < 0.65) && (confidence > 0.05);
+
+        if (confidence <= 0.05 && !isLikelyHair) {
           // 100% Studio background
           result.setPixelRgb(x, y, studioR, studioG, studioB);
-        } else if (confidence >= 0.92) {
+        } else if (confidence >= 0.85 || isLikelyHair) {
           // 100% Human subject
-          result.setPixel(x, y, source.getPixel(x, y));
+          result.setPixel(x, y, p);
         } else {
           // Sub-pixel optical feathering on hair & clothing edges
-          final double fgAlpha = (confidence - 0.08) / (0.92 - 0.08);
+          final double fgAlpha = ((confidence - 0.05) / (0.85 - 0.05)).clamp(0.0, 1.0);
           final double bgAlpha = 1.0 - fgAlpha;
-          final p = source.getPixel(x, y);
           final int r = (p.r * fgAlpha + studioR * bgAlpha).round().clamp(0, 255);
           final int g = (p.g * fgAlpha + studioG * bgAlpha).round().clamp(0, 255);
           final int b = (p.b * fgAlpha + studioB * bgAlpha).round().clamp(0, 255);
@@ -385,6 +454,114 @@ class PhotoComposerService {
     }
 
     return result;
+  }
+
+  /// Detects subject biometric bounds (crown of hair, chin, center) from neural mask or skin analysis
+  static _SubjectBounds? _detectBiometricSubjectBounds({
+    required img.Image oriented,
+    List<double>? neuralMask,
+    int? maskW,
+    int? maskH,
+  }) {
+    final int origW = oriented.width;
+    final int origH = oriented.height;
+
+    // 1. If Neural Mask is present, find crown and chin profile
+    if (neuralMask != null && maskW != null && maskH != null && neuralMask.length == maskW * maskH) {
+      int crownY = -1;
+      int minSubjX = origW;
+      int maxSubjX = 0;
+
+      for (int my = 0; my < maskH; my++) {
+        int fgCount = 0;
+        int minMx = maskW;
+        int maxMx = 0;
+        for (int mx = 0; mx < maskW; mx++) {
+          final conf = neuralMask[my * maskW + mx];
+          if (conf > 0.35) {
+            fgCount++;
+            if (mx < minMx) minMx = mx;
+            if (mx > maxMx) maxMx = mx;
+          }
+        }
+
+        if (fgCount >= 4 && crownY == -1) {
+          crownY = ((my / maskH) * origH).round();
+        }
+
+        if (crownY != -1 && fgCount > 0) {
+          final origMinX = ((minMx / maskW) * origW).round();
+          final origMaxX = ((maxMx / maskW) * origW).round();
+          if (origMinX < minSubjX) minSubjX = origMinX;
+          if (origMaxX > maxSubjX) maxSubjX = origMaxX;
+        }
+      }
+
+      if (crownY != -1) {
+        final int crownMy = ((crownY / origH) * maskH).round().clamp(0, maskH - 1);
+        int prevWidth = 0;
+        int estimatedChinMy = crownMy + (maskH * 0.28).round();
+
+        for (int my = crownMy; my < maskH; my++) {
+          int rowWidth = 0;
+          for (int mx = 0; mx < maskW; mx++) {
+            if (neuralMask[my * maskW + mx] > 0.35) rowWidth++;
+          }
+
+          if (my > crownMy + (maskH * 0.12).round() && prevWidth > 0 && rowWidth > (prevWidth * 1.45).round()) {
+            estimatedChinMy = my - (maskH * 0.04).round();
+            break;
+          }
+          prevWidth = math.max(prevWidth, rowWidth);
+        }
+
+        final int chinY = ((estimatedChinMy / maskH) * origH).round();
+        final int centerX = ((minSubjX + maxSubjX) / 2).round();
+        final int headHeight = math.max(30, chinY - crownY);
+
+        return _SubjectBounds(
+          crownY: crownY,
+          chinY: chinY,
+          centerX: centerX,
+          headHeight: headHeight,
+        );
+      }
+    }
+
+    // 2. Fallback using skin chrominance cluster analysis
+    int skinMinX = origW, skinMaxX = 0;
+    int skinMinY = origH, skinMaxY = 0;
+    int skinCount = 0;
+
+    for (int y = 0; y < origH; y += 2) {
+      for (int x = 0; x < origW; x += 2) {
+        final p = oriented.getPixel(x, y);
+        if (_isSkinColor(p.r, p.g, p.b)) {
+          skinCount++;
+          if (x < skinMinX) skinMinX = x;
+          if (x > skinMaxX) skinMaxX = x;
+          if (y < skinMinY) skinMinY = y;
+          if (y > skinMaxY) skinMaxY = y;
+        }
+      }
+    }
+
+    if (skinCount > 100 && skinMaxY > skinMinY) {
+      final int faceHeight = skinMaxY - skinMinY;
+      final int crownY = math.max(0, skinMinY - (faceHeight * 0.25).round());
+      final int chinY = skinMaxY;
+      final int headHeight = chinY - crownY;
+      final int centerX = (skinMinX + skinMaxX) ~/ 2;
+
+      return _SubjectBounds(
+        crownY: crownY,
+        chinY: chinY,
+        centerX: centerX,
+        headHeight: headHeight,
+      );
+    }
+
+    return null;
   }
 
   /// Checks whether a given RGB pixel is human skin tone using ITU-R BT.601 chrominance
@@ -446,7 +623,6 @@ class PhotoComposerService {
     }
 
     final double faceCenterX = skinCount > 60 ? (sumSkinX / skinCount) : (width * 0.50);
-    final double faceCenterY = skinCount > 60 ? (sumSkinY / skinCount) : (height * 0.45);
 
     skinXs.sort();
     skinYs.sort();

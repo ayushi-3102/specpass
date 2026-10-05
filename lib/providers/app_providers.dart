@@ -29,13 +29,31 @@ final countrySearchQueryProvider = NotifierProvider<CountrySearchQueryNotifier, 
   CountrySearchQueryNotifier.new,
 );
 
-/// Filtered list of country specs based on search query
+/// Provider for filtering country specs by document purpose (Passport, Visa, Driving License, Student ID, etc.)
+class SelectedDocumentPurposeNotifier extends Notifier<DocumentPurpose> {
+  @override
+  DocumentPurpose build() => DocumentPurpose.all;
+
+  void select(DocumentPurpose purpose) => state = purpose;
+}
+
+final selectedDocumentPurposeProvider = NotifierProvider<SelectedDocumentPurposeNotifier, DocumentPurpose>(
+  SelectedDocumentPurposeNotifier.new,
+);
+
+/// Filtered list of country specs based on search query and selected document purpose
 final filteredCountrySpecsProvider = Provider<List<CountrySpec>>((ref) {
   final query = ref.watch(countrySearchQueryProvider).toLowerCase().trim();
+  final purpose = ref.watch(selectedDocumentPurposeProvider);
+
+  final List<CountrySpec> baseList = (purpose == DocumentPurpose.all)
+      ? CountrySpecsData.allSpecs
+      : CountrySpecsData.getByPurpose(purpose);
+
   if (query.isEmpty) {
-    return CountrySpecsData.allSpecs;
+    return baseList;
   }
-  return CountrySpecsData.allSpecs.where((spec) {
+  return baseList.where((spec) {
     return spec.countryName.toLowerCase().contains(query) ||
         spec.documentTitle.toLowerCase().contains(query) ||
         spec.formattedDimensions.toLowerCase().contains(query) ||

@@ -608,18 +608,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: 24),
 
+          // Photo Purpose Selection Filter
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Document Purpose',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurface),
+              ),
+              Text(
+                '${filteredSpecs.length} presets',
+                style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppTheme.outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildPurposeFilterRow(),
+          const SizedBox(height: 18),
+
           // Horizontal Carousel of Popular Standards
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Quick Switch Standards',
+                'Presets & Dimensions',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurface),
               ),
               GestureDetector(
                 onTap: () => setState(() => _currentTabIndex = 1),
                 child: const Text(
-                  'Browse All 140+ →',
+                  'Browse All →',
                   style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppTheme.secondary),
                 ),
               ),
@@ -628,7 +646,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SizedBox(height: 12),
 
           SizedBox(
-            height: 130,
+            height: 140,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: filteredSpecs.length,
@@ -642,7 +660,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ref.read(selectedCountrySpecProvider.notifier).select(spec);
                   },
                   child: Container(
-                    width: 165,
+                    width: 175,
                     margin: const EdgeInsets.only(right: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -662,16 +680,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           children: [
                             Text(spec.flagEmoji, style: const TextStyle(fontSize: 22)),
                             const SizedBox(width: 6),
-                            Expanded(
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
                               child: Text(
-                                spec.standardTag,
-                                textAlign: TextAlign.end,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                spec.purpose.label,
                                 style: const TextStyle(
                                   fontFamily: 'JetBrains Mono',
                                   fontSize: 8,
-                                  color: AppTheme.outline,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.secondary,
                                 ),
                               ),
                             ),
@@ -687,10 +708,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.onSurface),
                             ),
                             Text(
+                              spec.documentTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10, color: AppTheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
                               spec.formattedDimensions,
                               style: const TextStyle(
                                 fontFamily: 'JetBrains Mono',
                                 fontSize: 11,
+                                fontWeight: FontWeight.bold,
                                 color: AppTheme.secondary,
                               ),
                             ),
@@ -756,6 +785,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
+        ),
+
+        // Purpose Filter Row
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+          child: _buildPurposeFilterRow(),
         ),
 
         // Standards List
@@ -1154,6 +1189,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPurposeFilterRow() {
+    final activePurpose = ref.watch(selectedDocumentPurposeProvider);
+
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: DocumentPurpose.values.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final purpose = DocumentPurpose.values[index];
+          final isSelected = activePurpose == purpose;
+
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                ref.read(selectedDocumentPurposeProvider.notifier).select(purpose);
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppTheme.secondary.withValues(alpha: 0.2)
+                      : AppTheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected ? AppTheme.secondary : AppTheme.outlineVariant,
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(purpose.iconEmoji, style: const TextStyle(fontSize: 13)),
+                    const SizedBox(width: 6),
+                    Text(
+                      purpose.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isSelected ? Colors.white : AppTheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -1,9 +1,58 @@
+enum DocumentPurpose {
+  all,
+  passport,
+  visa,
+  drivingLicense,
+  studentCard,
+  residencePermit,
+  customId;
+
+  String get label {
+    switch (this) {
+      case DocumentPurpose.all:
+        return 'All Presets';
+      case DocumentPurpose.passport:
+        return 'Passport';
+      case DocumentPurpose.visa:
+        return 'Visa';
+      case DocumentPurpose.drivingLicense:
+        return 'Driving License';
+      case DocumentPurpose.studentCard:
+        return 'Student ID';
+      case DocumentPurpose.residencePermit:
+        return 'Green Card / PR';
+      case DocumentPurpose.customId:
+        return 'Custom';
+    }
+  }
+
+  String get iconEmoji {
+    switch (this) {
+      case DocumentPurpose.all:
+        return '🌐';
+      case DocumentPurpose.passport:
+        return '🛂';
+      case DocumentPurpose.visa:
+        return '✈️';
+      case DocumentPurpose.drivingLicense:
+        return '🪪';
+      case DocumentPurpose.studentCard:
+        return '🎓';
+      case DocumentPurpose.residencePermit:
+        return '🏛️';
+      case DocumentPurpose.customId:
+        return '📐';
+    }
+  }
+}
+
 class CountrySpec {
   final String id;
   final String countryCode;
   final String countryName;
   final String documentTitle;
   final String flagEmoji;
+  final DocumentPurpose purpose;
   final double widthMm;
   final double heightMm;
   final int targetDpi;
@@ -23,6 +72,7 @@ class CountrySpec {
     required this.countryName,
     required this.documentTitle,
     required this.flagEmoji,
+    this.purpose = DocumentPurpose.passport,
     required this.widthMm,
     required this.heightMm,
     this.targetDpi = 300,
@@ -41,10 +91,12 @@ class CountrySpec {
   int get heightPixels => ((heightMm / 25.4) * targetDpi).round();
   double get aspectRatio => widthMm / heightMm;
 
+  // Target biometric head ratio (midpoint of consular requirement)
+  double get targetHeadRatio => (headRatioMin + headRatioMax) / 2.0;
+
   // 4x6 inch print sheet calculation (4x6 inches = 101.6 x 152.4 mm)
-  // At 300 DPI, 4x6 inches is 1200 x 1800 px (or 1800 x 1200 px landscape)
   int get printSheetRows {
-    if (widthMm > 45) return 2; // For 2x2" (51x51mm), 2 rows x 3 cols or 2x2
+    if (widthMm > 45) return 2; // For 2x2" (51x51mm)
     return 2; // Standard 2 rows
   }
 
