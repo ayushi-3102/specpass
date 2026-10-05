@@ -394,7 +394,8 @@ class PhotoComposerService {
   }
 
   /// Composites the subject onto the official studio background using the Neural AI mask
-  /// with sub-pixel feathering, studio lighting falloff, and exact coordinate mapping.
+  /// with sub-pixel bilinear sampling, high-frequency hair strand recovery,
+  /// alpha color decontamination (stripping old wall tint), and studio light wrap.
   static img.Image _applyNeuralMaskAndStudioLighting({
     required img.Image source,
     required List<double> confidences,
@@ -416,37 +417,113 @@ class PhotoComposerService {
     final int studioG = targetBgColor.g.toInt().clamp(0, 255);
     final int studioB = targetBgColor.b.toInt().clamp(0, 255);
 
+    // 1. Dynamic Background Wall Color Sampling
+    // Sample the top corners of source (outside the subject's head) to determine
+    // the precise background color of the original wall (for color decontamination)
+    double sumWallR = 0, sumWallG = 0, sumWallB = 0;
+    int wallSampleCount = 0;
+
+    final int sampleMarginX = math.max(4, (width * 0.12).round());
+    final int sampleMarginY = math.max(4, (height * 0.10).round());
+
+    for (int y = 0; y < sampleMarginY; y++) {
+      for (int x = 0; x < width; x++) {
+        if (x < sampleMarginX || x > width - sampleMarginX) {
+          final p = source.getPixel(x, y);
+          sumWallR += p.r;
+          sumWallG += p.g;
+          sumWallB += p.b;
+          wallSampleCount++;
+        }
+      }
+    }
+
+    if (wallSampleCount == 0) wallSampleCount = 1;
+    final double wallR = sumWallR / wallSampleCount;
+    final double wallG = sumWallG / wallSampleCount;
+    final double wallB = sumWallB / wallSampleCount;
+
+    // Bilinear sampling helper for neural mask
+    double sampleBilinearConfidence(double origX, double origY) {
+      final double fx = ((origX / originalW) * (maskWidth - 1)).clamp(0.0, maskWidth - 1.0);
+      final double fy = ((origY / originalH) * (maskHeight - 1)).clamp(0.0, maskHeight - 1.0);
+
+      final int x0 = fx.floor();
+      final int x1 = math.min(x0 + 1, maskWidth - 1);
+      final int y0 = fy.floor();
+      final int y1 = math.min(y0 + 1, maskHeight - 1);
+
+      final double wx = fx - x0;
+      final double wy = fy - y0;
+
+      final double c00 = confidences[y0 * maskWidth + x0];
+      final double c10 = confidences[y0 * maskWidth + x1];
+      final double c01 = confidences[y1 * maskWidth + x0];
+      final double c11 = confidences[y1 * maskWidth + x1];
+
+      final double top = c00 * (1.0 - wx) + c10 * wx;
+      final double bottom = c01 * (1.0 - wx) + c11 * wx;
+      return top * (1.0 - wy) + bottom * wy;
+    }
+
     for (int y = 0; y < height; y++) {
       final double normY = y / height;
       final double origY = cropY + normY * cropH;
-      final int my = ((origY / originalH) * maskHeight).floor().clamp(0, maskHeight - 1);
 
       for (int x = 0; x < width; x++) {
         final double normX = x / width;
         final double origX = cropX + normX * cropW;
-        final int mx = ((origX / originalW) * maskWidth).floor().clamp(0, maskWidth - 1);
 
-        final double confidence = confidences[my * maskWidth + mx];
+        double confidence = sampleBilinearConfidence(origX, origY);
         final p = source.getPixel(x, y);
 
-        // Dark hair protection: near head crown, protect dark hair from clipping
-        final bool isLikelyHair = (p.r < 55 && p.g < 50 && p.b < 45) && (normY < 0.65) && (confidence > 0.15);
+        // 2. High-Frequency Hair Strand Guided Recovery
+        // In the head/hair region (upper 65% of the portrait), hair strands often have
+        // strong optical luminance/chromatic contrast against the wall that was blurred by
+        // the low-resolution 256x256 neural mask.
+        if (normY < 0.65 && confidence > 0.08 && confidence < 0.88) {
+          final double diffR = (p.r - wallR).abs().toDouble();
+          final double diffG = (p.g - wallG).abs().toDouble();
+          final double diffB = (p.b - wallB).abs().toDouble();
+          final double wallDist = diffR * 0.299 + diffG * 0.587 + diffB * 0.114;
 
-        if (confidence <= 0.35 && !isLikelyHair) {
+          // Hair contrast evidence: distinct from wall
+          if (wallDist > 20.0) {
+            final double hairDetail = ((wallDist - 20.0) / 45.0).clamp(0.0, 1.0);
+            confidence = math.max(confidence, confidence * 0.45 + hairDetail * 0.55);
+          }
+        }
+
+        // 3. Smooth Sub-Pixel Hermite Alpha Transition
+        // Smooth Hermite cubic S-curve gives natural 1.5 - 2px optical photographic falloff
+        final double t = ((confidence - 0.18) / (0.82 - 0.18)).clamp(0.0, 1.0);
+        final double alpha = t * t * (3.0 - 2.0 * t);
+
+        if (alpha <= 0.005) {
           // 100% Studio background
           result.setPixelRgb(x, y, studioR, studioG, studioB);
-        } else if (confidence >= 0.75 || isLikelyHair) {
+        } else if (alpha >= 0.995) {
           // 100% Human subject
           result.setPixel(x, y, p);
         } else {
-          // Smooth Hermite cubic interpolation for clean edge transition
-          final double t = ((confidence - 0.35) / (0.75 - 0.35)).clamp(0.0, 1.0);
-          final double fgAlpha = t * t * (3 - 2 * t);
-          final double bgAlpha = 1.0 - fgAlpha;
-          final int r = (p.r * fgAlpha + studioR * bgAlpha).round().clamp(0, 255);
-          final int g = (p.g * fgAlpha + studioG * bgAlpha).round().clamp(0, 255);
-          final int b = (p.b * fgAlpha + studioB * bgAlpha).round().clamp(0, 255);
-          result.setPixelRgb(x, y, r, g, b);
+          // 4. Color Decontamination (Spill Suppression)
+          // Subtract the contaminated background wall color so hair edges don't retain dirty halos
+          final double safeAlpha = math.max(alpha, 0.12);
+          final double cleanR = (p.r - (1.0 - alpha) * wallR) / safeAlpha;
+          final double cleanG = (p.g - (1.0 - alpha) * wallG) / safeAlpha;
+          final double cleanB = (p.b - (1.0 - alpha) * wallB) / safeAlpha;
+
+          final double fgR = cleanR.clamp(0.0, 255.0);
+          final double fgG = cleanG.clamp(0.0, 255.0);
+          final double fgB = cleanB.clamp(0.0, 255.0);
+
+          // Subtle studio light wrap (rim radiance)
+          final double lightWrap = (1.0 - alpha) * 0.08;
+          final int finalR = (fgR * alpha + studioR * (1.0 - alpha + lightWrap)).round().clamp(0, 255);
+          final int finalG = (fgG * alpha + studioG * (1.0 - alpha + lightWrap)).round().clamp(0, 255);
+          final int finalB = (fgB * alpha + studioB * (1.0 - alpha + lightWrap)).round().clamp(0, 255);
+
+          result.setPixelRgb(x, y, finalR, finalG, finalB);
         }
       }
     }
@@ -852,10 +929,20 @@ class PhotoComposerService {
           result.setPixel(x, y, source.getPixel(x, y));
         } else {
           final p = source.getPixel(x, y);
-          // Color decontamination and optical studio light wrap
-          final int r = (p.r * alpha + studioR * (1.0 - alpha)).round().clamp(0, 255);
-          final int g = (p.g * alpha + studioG * (1.0 - alpha)).round().clamp(0, 255);
-          final int b = (p.b * alpha + studioB * (1.0 - alpha)).round().clamp(0, 255);
+          // Closed-form color decontamination (strip wall tint) and studio light wrap
+          final double safeAlpha = math.max(alpha, 0.12);
+          final double bgR = (x < faceCenterX) ? leftBgR : rightBgR;
+          final double bgG = (x < faceCenterX) ? leftBgG : rightBgG;
+          final double bgB = (x < faceCenterX) ? leftBgB : rightBgB;
+
+          final double cleanR = ((p.r - (1.0 - alpha) * bgR) / safeAlpha).clamp(0.0, 255.0);
+          final double cleanG = ((p.g - (1.0 - alpha) * bgG) / safeAlpha).clamp(0.0, 255.0);
+          final double cleanB = ((p.b - (1.0 - alpha) * bgB) / safeAlpha).clamp(0.0, 255.0);
+
+          final double lightWrap = (1.0 - alpha) * 0.06;
+          final int r = (cleanR * alpha + studioR * (1.0 - alpha + lightWrap)).round().clamp(0, 255);
+          final int g = (cleanG * alpha + studioG * (1.0 - alpha + lightWrap)).round().clamp(0, 255);
+          final int b = (cleanB * alpha + studioB * (1.0 - alpha + lightWrap)).round().clamp(0, 255);
           result.setPixelRgb(x, y, r, g, b);
         }
       }
