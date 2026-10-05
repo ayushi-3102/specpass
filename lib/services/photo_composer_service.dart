@@ -106,7 +106,7 @@ class PhotoComposerService {
 
       if (kIsWeb) {
         try {
-          cutoutPngBytes = await getWebImglyCutout(rawBytes);
+          cutoutPngBytes = await getWebImglyCutout(rawBytes, targetHex);
         } catch (_) {}
 
         if (cutoutPngBytes == null) {
@@ -216,53 +216,64 @@ class PhotoComposerService {
     // -------------------------------------------------------------------------
     int cropX, cropY, cropW, cropH;
 
-    final _SubjectBounds? bounds = _detectBiometricSubjectBounds(
-      oriented: oriented,
-      neuralMask: neuralMask,
-      maskW: maskW,
-      maskH: maskH,
-    );
+    final double orientedAspect = oriented.width / oriented.height;
+    final bool isAspectMatched = (orientedAspect - targetAspect).abs() < 0.02;
 
-    if (bounds != null && bounds.headHeight > 25) {
-      int desiredH = (bounds.headHeight / targetHeadRatio).round();
-      int desiredW = (desiredH * targetAspect).round();
-
-      // Top margin above hair crown (~8-10% of total frame height)
-      final int topMargin = (desiredH * 0.09).round();
-      int startY = bounds.crownY - topMargin;
-      int startX = (bounds.centerX - desiredW / 2).round();
-
-      // Ensure crop box fits inside the original image
-      if (desiredW > oriented.width) {
-        desiredW = oriented.width;
-        desiredH = (desiredW / targetAspect).round();
-        startX = 0;
-        startY = bounds.crownY - (desiredH * 0.09).round();
-      }
-
-      if (desiredH > oriented.height) {
-        desiredH = oriented.height;
-        desiredW = (desiredH * targetAspect).round();
-        startY = 0;
-        startX = (bounds.centerX - desiredW / 2).round();
-      }
-
-      cropX = startX.clamp(0, math.max(0, oriented.width - desiredW));
-      cropY = startY.clamp(0, math.max(0, oriented.height - desiredH));
-      cropW = math.min(desiredW, oriented.width - cropX);
-      cropH = math.min(desiredH, oriented.height - cropY);
-    } else {
-      // Fallback: aspect-fit center crop
+    if (isAspectMatched) {
+      // Photo is ALREADY framed to the exact consular aspect ratio (from camera studio or crop screen)
+      cropX = 0;
+      cropY = 0;
       cropW = oriented.width;
       cropH = oriented.height;
-      final double currentAspect = cropW / cropH;
-      if (currentAspect > targetAspect) {
-        cropW = (cropH * targetAspect).round();
+    } else {
+      final _SubjectBounds? bounds = _detectBiometricSubjectBounds(
+        oriented: oriented,
+        neuralMask: neuralMask,
+        maskW: maskW,
+        maskH: maskH,
+      );
+
+      if (bounds != null && bounds.headHeight > 25) {
+        int desiredH = (bounds.headHeight / targetHeadRatio).round();
+        int desiredW = (desiredH * targetAspect).round();
+
+        // Top margin above hair crown (~8-10% of total frame height)
+        final int topMargin = (desiredH * 0.09).round();
+        int startY = bounds.crownY - topMargin;
+        int startX = (bounds.centerX - desiredW / 2).round();
+
+        // Ensure crop box fits inside the original image
+        if (desiredW > oriented.width) {
+          desiredW = oriented.width;
+          desiredH = (desiredW / targetAspect).round();
+          startX = 0;
+          startY = bounds.crownY - (desiredH * 0.09).round();
+        }
+
+        if (desiredH > oriented.height) {
+          desiredH = oriented.height;
+          desiredW = (desiredH * targetAspect).round();
+          startY = 0;
+          startX = (bounds.centerX - desiredW / 2).round();
+        }
+
+        cropX = startX.clamp(0, math.max(0, oriented.width - desiredW));
+        cropY = startY.clamp(0, math.max(0, oriented.height - desiredH));
+        cropW = math.min(desiredW, oriented.width - cropX);
+        cropH = math.min(desiredH, oriented.height - cropY);
       } else {
-        cropH = (cropW / targetAspect).round();
+        // Fallback: aspect-fit center crop
+        cropW = oriented.width;
+        cropH = oriented.height;
+        final double currentAspect = cropW / cropH;
+        if (currentAspect > targetAspect) {
+          cropW = (cropH * targetAspect).round();
+        } else {
+          cropH = (cropW / targetAspect).round();
+        }
+        cropX = (oriented.width - cropW) ~/ 2;
+        cropY = (oriented.height - cropH) ~/ 2;
       }
-      cropX = (oriented.width - cropW) ~/ 2;
-      cropY = (oriented.height - cropH) ~/ 2;
     }
 
     final img.Image cropped = img.copyCrop(
@@ -317,17 +328,24 @@ class PhotoComposerService {
     } else if (cutoutPngBytes != null) {
       img.Image? decodedCutout;
       try {
-        decodedCutout = img.decodePng(cutoutPngBytes);
+        decodedCutout = img.decodeImage(cutoutPngBytes);
       } catch (_) {}
 
       if (decodedCutout != null) {
         final img.Image orientedCutout = img.bakeOrientation(decodedCutout);
+        final double scaleX = orientedCutout.width / oriented.width;
+        final double scaleY = orientedCutout.height / oriented.height;
+        final int cX = (cropX * scaleX).round().clamp(0, orientedCutout.width - 1);
+        final int cY = (cropY * scaleY).round().clamp(0, orientedCutout.height - 1);
+        final int cW = (cropW * scaleX).round().clamp(1, orientedCutout.width - cX);
+        final int cH = (cropH * scaleY).round().clamp(1, orientedCutout.height - cY);
+
         final img.Image croppedCutout = img.copyCrop(
           orientedCutout,
-          x: cropX.clamp(0, orientedCutout.width - 1),
-          y: cropY.clamp(0, orientedCutout.height - 1),
-          width: cropW.clamp(1, orientedCutout.width - cropX),
-          height: cropH.clamp(1, orientedCutout.height - cropY),
+          x: cX,
+          y: cY,
+          width: cW,
+          height: cH,
         );
         final img.Image resizedCutout = img.copyResize(
           croppedCutout,
@@ -336,24 +354,29 @@ class PhotoComposerService {
           interpolation: img.Interpolation.cubic,
         );
 
-        finishedSingle = img.Image(width: targetWidth, height: targetHeight, numChannels: 3);
-        img.fill(finishedSingle, color: bgPixel);
+        if (decodedCutout.numChannels == 4) {
+          finishedSingle = img.Image(width: targetWidth, height: targetHeight, numChannels: 3);
+          img.fill(finishedSingle, color: bgPixel);
 
-        for (int y = 0; y < targetHeight; y++) {
-          for (int x = 0; x < targetWidth; x++) {
-            final p = resizedCutout.getPixel(x, y);
-            final double a = p.aNormalized.toDouble();
-            if (a <= 0.005) {
-              continue;
-            } else if (a >= 0.995) {
-              finishedSingle.setPixel(x, y, p);
-            } else {
-              final int r = (p.r * a + bgPixel.r * (1.0 - a)).round().clamp(0, 255);
-              final int g = (p.g * a + bgPixel.g * (1.0 - a)).round().clamp(0, 255);
-              final int b = (p.b * a + bgPixel.b * (1.0 - a)).round().clamp(0, 255);
-              finishedSingle.setPixelRgb(x, y, r, g, b);
+          for (int y = 0; y < targetHeight; y++) {
+            for (int x = 0; x < targetWidth; x++) {
+              final p = resizedCutout.getPixel(x, y);
+              final double a = p.aNormalized.toDouble();
+              if (a <= 0.005) {
+                continue;
+              } else if (a >= 0.995) {
+                finishedSingle.setPixel(x, y, p);
+              } else {
+                final int r = (p.r * a + bgPixel.r * (1.0 - a)).round().clamp(0, 255);
+                final int g = (p.g * a + bgPixel.g * (1.0 - a)).round().clamp(0, 255);
+                final int b = (p.b * a + bgPixel.b * (1.0 - a)).round().clamp(0, 255);
+                finishedSingle.setPixelRgb(x, y, r, g, b);
+              }
             }
           }
+        } else {
+          // Native GPU canvas already cleanly composited it onto the studio background
+          finishedSingle = resizedCutout;
         }
       } else if (neuralMask != null && maskW != null && maskH != null) {
         finishedSingle = _applyNeuralMaskAndStudioLighting(
@@ -422,8 +445,8 @@ class PhotoComposerService {
     img.fill(printSheet, color: img.ColorRgb8(255, 255, 255));
 
     // Determine grid rows & columns
-    final int cols = (widthMm > 45) ? 2 : 2;
-    final int rows = (widthMm > 45) ? 2 : 3;
+    final int cols = 2;
+    final int rows = (widthMm > 45 || heightMm > 50) ? 2 : 3;
     final int totalPhotos = cols * rows;
 
     // Calculate margins and spacing
@@ -1267,8 +1290,8 @@ class PhotoComposerService {
     final int targetWidth = ((spec.widthMm / 25.4) * spec.targetDpi).round();
     final int targetHeight = ((spec.heightMm / 25.4) * spec.targetDpi).round();
 
-    final int cols = (spec.widthMm > 45) ? 2 : 2;
-    final int rows = (spec.widthMm > 45) ? 2 : 3;
+    final int cols = 2;
+    final int rows = (spec.widthMm > 45 || spec.heightMm > 50) ? 2 : 3;
 
     final int totalPhotoW = targetWidth * cols;
     final int totalPhotoH = targetHeight * rows;

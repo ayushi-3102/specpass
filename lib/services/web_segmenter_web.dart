@@ -33,12 +33,12 @@ Future<List<double>?> getWebNeuralMask(Uint8List rawBytes) async {
 }
 
 @JS('runImglyBackgroundRemoval')
-external JSPromise<JSString?>? _runImglyBackgroundRemoval(JSString base64Image);
+external JSPromise<JSString?>? _runImglyBackgroundRemoval(JSString base64Image, JSString? targetBgHex);
 
-Future<Uint8List?> getWebImglyCutout(Uint8List rawBytes) async {
+Future<Uint8List?> getWebImglyCutout(Uint8List rawBytes, [String? targetBgHex]) async {
   try {
     final base64Str = 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
-    final promise = _runImglyBackgroundRemoval(base64Str.toJS);
+    final promise = _runImglyBackgroundRemoval(base64Str.toJS, targetBgHex?.toJS);
     if (promise == null) return null;
 
     final jsStr = await promise.toDart;

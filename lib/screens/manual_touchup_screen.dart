@@ -171,8 +171,8 @@ class _ManualTouchupScreenState extends State<ManualTouchupScreen> {
 
       final int targetWidth = _workingImage!.width;
       final int targetHeight = _workingImage!.height;
-      final int cols = (widget.spec.widthMm > 45) ? 2 : 2;
-      final int rows = (widget.spec.widthMm > 45) ? 2 : 3;
+      final int cols = 2;
+      final int rows = (widget.spec.widthMm > 45 || widget.spec.heightMm > 50) ? 2 : 3;
       final int totalPhotos = cols * rows;
 
       final int totalPhotoW = targetWidth * cols;
