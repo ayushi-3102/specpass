@@ -412,13 +412,11 @@ class PhotoComposerService {
     final int height = source.height;
     final img.Image result = img.Image(width: width, height: height, numChannels: 3);
 
-    for (int y = 0; y < height; y++) {
-      // Gentle studio lighting falloff (simulates real studio flash umbrella)
-      final double studioGrad = 1.0 - (y / height) * 0.025;
-      final int studioR = (targetBgColor.r * studioGrad).round().clamp(0, 255);
-      final int studioG = (targetBgColor.g * studioGrad).round().clamp(0, 255);
-      final int studioB = (targetBgColor.b * studioGrad).round().clamp(0, 255);
+    final int studioR = targetBgColor.r.toInt().clamp(0, 255);
+    final int studioG = targetBgColor.g.toInt().clamp(0, 255);
+    final int studioB = targetBgColor.b.toInt().clamp(0, 255);
 
+    for (int y = 0; y < height; y++) {
       final double normY = y / height;
       final double origY = cropY + normY * cropH;
       final int my = ((origY / originalH) * maskHeight).floor().clamp(0, maskHeight - 1);
@@ -431,19 +429,19 @@ class PhotoComposerService {
         final double confidence = confidences[my * maskWidth + mx];
         final p = source.getPixel(x, y);
 
-        // Dark hair protection: if pixel is deep dark hair near head area,
-        // protect from clipping even if neural confidence dipped in shadows
-        final bool isLikelyHair = (p.r < 55 && p.g < 50 && p.b < 45) && (normY < 0.65) && (confidence > 0.05);
+        // Dark hair protection: near head crown, protect dark hair from clipping
+        final bool isLikelyHair = (p.r < 55 && p.g < 50 && p.b < 45) && (normY < 0.65) && (confidence > 0.15);
 
-        if (confidence <= 0.05 && !isLikelyHair) {
+        if (confidence <= 0.35 && !isLikelyHair) {
           // 100% Studio background
           result.setPixelRgb(x, y, studioR, studioG, studioB);
-        } else if (confidence >= 0.85 || isLikelyHair) {
+        } else if (confidence >= 0.75 || isLikelyHair) {
           // 100% Human subject
           result.setPixel(x, y, p);
         } else {
-          // Sub-pixel optical feathering on hair & clothing edges
-          final double fgAlpha = ((confidence - 0.05) / (0.85 - 0.05)).clamp(0.0, 1.0);
+          // Smooth Hermite cubic interpolation for clean edge transition
+          final double t = ((confidence - 0.35) / (0.75 - 0.35)).clamp(0.0, 1.0);
+          final double fgAlpha = t * t * (3 - 2 * t);
           final double bgAlpha = 1.0 - fgAlpha;
           final int r = (p.r * fgAlpha + studioR * bgAlpha).round().clamp(0, 255);
           final int g = (p.g * fgAlpha + studioG * bgAlpha).round().clamp(0, 255);

@@ -1,13 +1,74 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/theme.dart';
 import '../models/country_spec.dart';
 import 'biometric_crop_align_screen.dart';
+
+enum BiometricGuidanceState {
+  searching(
+    title: 'Align in Silhouette',
+    instruction: 'Fit your head and shoulders inside the outline',
+    color: Color(0xFF94A3B8), // Slate gray
+    icon: Icons.face_retouching_natural,
+    isReady: false,
+  ),
+  tooFar(
+    title: 'Move Closer',
+    instruction: 'Step closer to the camera to fill the frame',
+    color: Color(0xFFF59E0B), // Amber
+    icon: Icons.zoom_in,
+    isReady: false,
+  ),
+  tooClose(
+    title: 'Move Further Back',
+    instruction: 'Step back slightly so your head and collar fit',
+    color: Color(0xFFF59E0B), // Amber
+    icon: Icons.zoom_out,
+    isReady: false,
+  ),
+  offCenter(
+    title: 'Center Your Head',
+    instruction: 'Align your face in the center of the outline',
+    color: Color(0xFFF59E0B), // Amber
+    icon: Icons.center_focus_strong,
+    isReady: false,
+  ),
+  tilted(
+    title: 'Straighten Your Head',
+    instruction: 'Keep your eyes level and look directly at sensor',
+    color: Color(0xFFF59E0B), // Amber
+    icon: Icons.screen_rotation,
+    isReady: false,
+  ),
+  perfect(
+    title: 'PERFECT! HOLD STILL',
+    instruction: 'Biometric lock engaged • Tap shutter to capture',
+    color: Color(0xFF10B981), // Emerald Green
+    icon: Icons.check_circle_rounded,
+    isReady: true,
+  );
+
+  final String title;
+  final String instruction;
+  final Color color;
+  final IconData icon;
+  final bool isReady;
+
+  const BiometricGuidanceState({
+    required this.title,
+    required this.instruction,
+    required this.color,
+    required this.icon,
+    required this.isReady,
+  });
+}
 
 class CameraStudioScreen extends ConsumerStatefulWidget {
   final CountrySpec spec;
@@ -18,7 +79,7 @@ class CameraStudioScreen extends ConsumerStatefulWidget {
   ConsumerState<CameraStudioScreen> createState() => _CameraStudioScreenState();
 }
 
-class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
+class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> with SingleTickerProviderStateMixin {
   CameraController? _cameraController;
   List<CameraDescription> _availableCameras = [];
   int _selectedCameraIndex = 0;
@@ -29,58 +90,53 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
   int _countdownRemaining = 0;
   bool _isCountingDown = false;
 
-  void _onShutterTapped() {
-    if (_isProcessing || _isCountingDown) return;
-    if (_timerDuration == 0) {
-      _capturePhoto();
-      return;
-    }
-
-    setState(() {
-      _isCountingDown = true;
-      _countdownRemaining = _timerDuration;
-    });
-
-    HapticFeedback.mediumImpact();
-
-    Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_countdownRemaining <= 1) {
-        timer.cancel();
-        setState(() {
-          _isCountingDown = false;
-          _countdownRemaining = 0;
-        });
-        HapticFeedback.heavyImpact();
-        _capturePhoto();
-      } else {
-        setState(() {
-          _countdownRemaining--;
-        });
-        HapticFeedback.selectionClick();
-      }
-    });
-  }
+  // Real-Time Biometric Face Guidance
+  FaceDetector? _faceDetector;
+  BiometricGuidanceState _guidanceState = BiometricGuidanceState.searching;
+  bool _isDetecting = false;
+  DateTime _lastDetectTime = DateTime.now();
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _initFaceDetector();
     _initCamera();
+  }
+
+  void _initFaceDetector() {
+    try {
+      _faceDetector = FaceDetector(
+        options: FaceDetectorOptions(
+          performanceMode: FaceDetectorMode.fast,
+          minFaceSize: 0.15,
+          enableClassification: false,
+          enableLandmarks: false,
+          enableContours: false,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[SpecPass] Face detector init: $e');
+    }
   }
 
   Future<void> _initCamera() async {
     try {
       _availableCameras = await availableCameras();
       if (_availableCameras.isNotEmpty) {
-        // Prefer front camera for passport selfie or back camera
-        final frontCameraIndex = _availableCameras.indexWhere(
+        final frontIndex = _availableCameras.indexWhere(
           (c) => c.lensDirection == CameraLensDirection.front,
         );
-        _selectedCameraIndex = frontCameraIndex != -1 ? frontCameraIndex : 0;
-
+        _selectedCameraIndex = frontIndex != -1 ? frontIndex : 0;
         await _setupController(_availableCameras[_selectedCameraIndex]);
       }
     } catch (e) {
@@ -103,9 +159,108 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
           _cameraController = controller;
           _isCameraReady = true;
         });
+
+        // Start live camera stream analysis on supported mobile platforms
+        if (!kIsWeb) {
+          _startLiveDetectionStream();
+        }
       }
     } catch (e) {
       debugPrint('[SpecPass] Setup controller error: $e');
+    }
+  }
+
+  void _startLiveDetectionStream() {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+
+    try {
+      _cameraController!.startImageStream((CameraImage image) {
+        final now = DateTime.now();
+        // Analyze frame every 280ms (~3.5 fps) to keep preview completely silky smooth
+        if (_isDetecting || now.difference(_lastDetectTime).inMilliseconds < 280) {
+          return;
+        }
+        _isDetecting = true;
+        _lastDetectTime = now;
+
+        _processFrameForBiometricGuidance(image).whenComplete(() {
+          _isDetecting = false;
+        });
+      });
+    } catch (e) {
+      debugPrint('[SpecPass] Live stream detection notice: $e');
+    }
+  }
+
+  Future<void> _processFrameForBiometricGuidance(CameraImage image) async {
+    if (_faceDetector == null) return;
+
+    try {
+      final WriteBuffer allBytes = WriteBuffer();
+      for (final Plane plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      final bytes = allBytes.done().buffer.asUint8List();
+
+      final Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
+      final camera = _availableCameras[_selectedCameraIndex];
+      final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+          InputImageRotation.rotation0deg;
+      final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ??
+          InputImageFormat.nv21;
+
+      final inputImage = InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: imageSize,
+          rotation: imageRotation,
+          format: inputImageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        ),
+      );
+
+      final List<Face> faces = await _faceDetector!.processImage(inputImage);
+
+      if (!mounted) return;
+
+      if (faces.isEmpty) {
+        _updateGuidance(BiometricGuidanceState.searching);
+        return;
+      }
+
+      final Face face = faces.first;
+      final double faceH = face.boundingBox.height;
+      final double faceCenterX = face.boundingBox.center.dx;
+
+      // Compute ratio relative to the shorter camera sensor dimension
+      final double minDim = math.min(imageSize.width, imageSize.height);
+      final double ratio = faceH / minDim;
+
+      // Check head roll tilt
+      final double roll = face.headEulerAngleZ ?? 0.0;
+
+      if (roll.abs() > 5.5) {
+        _updateGuidance(BiometricGuidanceState.tilted);
+      } else if (ratio < 0.38) {
+        _updateGuidance(BiometricGuidanceState.tooFar);
+      } else if (ratio > 0.76) {
+        _updateGuidance(BiometricGuidanceState.tooClose);
+      } else if ((faceCenterX - imageSize.width / 2).abs() > (imageSize.width * 0.18)) {
+        _updateGuidance(BiometricGuidanceState.offCenter);
+      } else {
+        _updateGuidance(BiometricGuidanceState.perfect);
+      }
+    } catch (_) {
+      // Gracefully silent on frame conversion edge cases
+    }
+  }
+
+  void _updateGuidance(BiometricGuidanceState newState) {
+    if (_guidanceState != newState) {
+      setState(() => _guidanceState = newState);
+      if (newState == BiometricGuidanceState.perfect) {
+        HapticFeedback.mediumImpact();
+      }
     }
   }
 
@@ -145,6 +300,42 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
     }
   }
 
+  void _onShutterTapped() {
+    if (_isProcessing || _isCountingDown) return;
+    if (_timerDuration == 0) {
+      _capturePhoto();
+      return;
+    }
+
+    setState(() {
+      _isCountingDown = true;
+      _countdownRemaining = _timerDuration;
+    });
+
+    HapticFeedback.mediumImpact();
+
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_countdownRemaining <= 1) {
+        timer.cancel();
+        setState(() {
+          _isCountingDown = false;
+          _countdownRemaining = 0;
+        });
+        HapticFeedback.heavyImpact();
+        _capturePhoto();
+      } else {
+        setState(() {
+          _countdownRemaining--;
+        });
+        HapticFeedback.selectionClick();
+      }
+    });
+  }
+
   Future<void> _capturePhoto() async {
     if (_isProcessing) return;
 
@@ -164,7 +355,6 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
         if (mounted) setState(() => _isProcessing = false);
       }
     } else {
-      // In web browser or when live camera stream is blocked by browser policy, open phone native camera directly!
       await _openNativeCamera();
     }
   }
@@ -219,7 +409,6 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
     }
   }
 
-
   Future<void> _runProcessingPipeline(Uint8List rawBytes) async {
     Navigator.push(
       context,
@@ -234,13 +423,16 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _cameraController?.dispose();
+    _faceDetector?.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    final double specAspect = widget.spec.widthMm / widget.spec.heightMm;
 
     return Scaffold(
       backgroundColor: AppTheme.surfaceDim,
@@ -248,9 +440,9 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Top HUD Bar
+            // Top HUD Bar: Back, Country Tag, Timer, Flash, Flip
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -268,22 +460,18 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.tertiary,
-                            shape: BoxShape.circle,
-                          ),
+                        Text(
+                          widget.spec.flagEmoji,
+                          style: const TextStyle(fontSize: 14),
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '${widget.spec.standardTag} | ${widget.spec.formattedDimensions}',
+                          '${widget.spec.countryName} • ${widget.spec.formattedDimensions}',
                           style: const TextStyle(
                             fontFamily: 'JetBrains Mono',
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: AppTheme.tertiary,
+                            color: AppTheme.secondary,
                           ),
                         ),
                       ],
@@ -291,7 +479,6 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                   ),
                   Row(
                     children: [
-                      // Self-Timer Toggle Button
                       IconButton(
                         icon: Icon(
                           _timerDuration == 0
@@ -334,61 +521,95 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
               ),
             ),
 
-            // Alignment Status Pill
+            // Live Biometric Guidance Pill (Direct Instructions: "Move Closer", "Perfect!")
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppTheme.tertiaryContainer.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.tertiary.withValues(alpha: 0.5)),
+                  color: _guidanceState.color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _guidanceState.color.withValues(alpha: 0.65),
+                    width: _guidanceState.isReady ? 2.0 : 1.2,
+                  ),
+                  boxShadow: _guidanceState.isReady
+                      ? [
+                          BoxShadow(
+                            color: _guidanceState.color.withValues(alpha: 0.25),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : null,
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.check_circle, color: AppTheme.tertiary, size: 18),
-                        SizedBox(width: 8),
-                        Text(
-                          'Hold Still — Biometric Lock',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.onSurface, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '98.4%',
-                      style: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.tertiary,
-                        fontSize: 13,
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: _guidanceState.color.withValues(alpha: 0.25),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _guidanceState.icon,
+                        color: _guidanceState.color,
+                        size: 20,
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _guidanceState.title,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: _guidanceState.color,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _guidanceState.instruction,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_guidanceState.isReady)
+                      ScaleTransition(
+                        scale: _pulseAnimation,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.tertiary,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'READY',
+                            style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 8),
 
-            // Micro Telemetry Chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  _buildTelemetryChip(Icons.lightbulb, 'LUX', '420 lx · OPTIMAL', AppTheme.secondary),
-                  const SizedBox(width: 8),
-                  _buildTelemetryChip(Icons.screen_rotation_alt, 'TILT', '0.2° ROLL', AppTheme.tertiary),
-                  const SizedBox(width: 8),
-                  _buildTelemetryChip(Icons.visibility, 'EYES', 'OPEN & ALIGNED', AppTheme.tertiary),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Live Camera Viewfinder Chamber
+            // Live Camera Viewfinder Chamber with Head & Shoulders Silhouette
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -407,69 +628,55 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                             onTap: _openNativeCamera,
                             child: Container(
                               color: AppTheme.surfaceContainerLowest,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Opacity(
-                                    opacity: 0.15,
-                                    child: Image.asset(
-                                      'assets/images/sample_portrait.png',
-                                      fit: BoxFit.cover,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: _openNativeCamera,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primary,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                                        elevation: 8,
+                                      ),
+                                      icon: const Icon(Icons.photo_camera, size: 22),
+                                      label: const Text(
+                                        'Open Camera Viewfinder',
+                                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                      ),
                                     ),
-                                  ),
-                                  Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ElevatedButton.icon(
-                                        onPressed: _openNativeCamera,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppTheme.primary,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                                          elevation: 8,
-                                        ),
-                                        icon: const Icon(Icons.photo_camera, size: 22),
-                                        label: const Text(
-                                          'Open Phone Camera',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                                        ),
+                                    const SizedBox(height: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: _pickFromGallery,
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppTheme.onSurface,
+                                        backgroundColor: AppTheme.surfaceContainerHigh.withValues(alpha: 0.8),
+                                        side: const BorderSide(color: AppTheme.outlineVariant),
+                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                       ),
-                                      const SizedBox(height: 12),
-                                      OutlinedButton.icon(
-                                        onPressed: _pickFromGallery,
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: AppTheme.onSurface,
-                                          backgroundColor: AppTheme.surfaceContainerHigh.withValues(alpha: 0.8),
-                                          side: const BorderSide(color: AppTheme.outlineVariant),
-                                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                        ),
-                                        icon: const Icon(Icons.photo_library, size: 18),
-                                        label: const Text(
-                                          'Choose from Library',
-                                          style: TextStyle(fontSize: 13),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                      icon: const Icon(Icons.photo_library, size: 18),
+                                      label: const Text('Choose from Gallery', style: TextStyle(fontSize: 13)),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
 
-                        // Consular Aspect-Ratio Viewfinder Mask & HUD vector overlay
+                        // Clean, Non-Confusing Head & Shoulders Silhouette Overlay
                         CustomPaint(
-                          painter: _CameraHudPainter(
-                            specAspect: widget.spec.widthMm / widget.spec.heightMm,
-                            headRatioMin: widget.spec.headRatioMin,
-                            headRatioMax: widget.spec.headRatioMax,
+                          painter: _HeadAndShouldersViewfinderPainter(
+                            specAspect: specAspect,
+                            guidanceState: _guidanceState,
                           ),
                         ),
 
                         if (_isCountingDown)
                           Container(
-                            color: Colors.black.withValues(alpha: 0.55),
+                            color: Colors.black.withValues(alpha: 0.6),
                             child: Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -481,13 +688,6 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                                       shape: BoxShape.circle,
                                       color: AppTheme.surfaceContainerLowest.withValues(alpha: 0.85),
                                       border: Border.all(color: AppTheme.tertiary, width: 3),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppTheme.tertiary.withValues(alpha: 0.4),
-                                          blurRadius: 30,
-                                          spreadRadius: 4,
-                                        ),
-                                      ],
                                     ),
                                     alignment: Alignment.center,
                                     child: Text(
@@ -503,11 +703,7 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                                   const SizedBox(height: 16),
                                   const Text(
                                     'Hold Still & Look Straight Ahead',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
                                 ],
                               ),
@@ -517,20 +713,18 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                         if (_isProcessing)
                           Container(
                             color: Colors.black.withValues(alpha: 0.75),
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(color: AppTheme.tertiary),
-                                SizedBox(height: 16),
-                                Text(
-                                  'AI Biometric Segmentation & Alignment...',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(color: AppTheme.tertiary),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Capturing & Preparing Alignment...',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                       ],
@@ -542,54 +736,56 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
 
             // Bottom Shutter & Controls
             Padding(
-              padding: EdgeInsets.fromLTRB(24, 20, 24, bottomInset + 20),
+              padding: EdgeInsets.fromLTRB(24, 16, 24, bottomInset + 16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // Gallery Pick Button
                   IconButton(
                     icon: const Icon(Icons.photo_library_outlined, color: AppTheme.onSurface, size: 28),
                     onPressed: _isProcessing || _isCountingDown ? null : _pickFromGallery,
                     tooltip: 'Import from Gallery',
                   ),
 
-                  // Tactile Dual-Ring Shutter Button with Self-Timer Indicator
+                  // Tactile Glowing Shutter Button (Pulses Green when Perfect!)
                   GestureDetector(
                     onTap: _isProcessing || _isCountingDown ? null : _onShutterTapped,
-                    child: Container(
-                      width: 76,
-                      height: 76,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      width: 80,
+                      height: 80,
                       padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: _isCountingDown ? AppTheme.tertiary : AppTheme.secondary,
-                          width: 3,
+                          color: _guidanceState.isReady ? AppTheme.tertiary : Colors.white70,
+                          width: _guidanceState.isReady ? 4 : 3,
                         ),
+                        boxShadow: _guidanceState.isReady
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.tertiary.withValues(alpha: 0.5),
+                                  blurRadius: 24,
+                                  spreadRadius: 4,
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _isCountingDown ? AppTheme.tertiaryContainer : Colors.white,
+                          color: _guidanceState.isReady ? AppTheme.tertiary : Colors.white,
                         ),
-                        child: _timerDuration > 0
-                            ? Center(
-                                child: Text(
-                                  _isCountingDown ? '$_countdownRemaining' : '${_timerDuration}s',
-                                  style: TextStyle(
-                                    fontFamily: 'JetBrains Mono',
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: _isCountingDown ? AppTheme.tertiary : Colors.black87,
-                                  ),
-                                ),
-                              )
-                            : null,
+                        child: Center(
+                          child: Icon(
+                            _guidanceState.isReady ? Icons.camera_alt : Icons.circle,
+                            color: _guidanceState.isReady ? Colors.black : Colors.black87,
+                            size: _guidanceState.isReady ? 32 : 24,
+                          ),
+                        ),
                       ),
                     ),
                   ),
 
-                  // Info specs button
                   IconButton(
                     icon: const Icon(Icons.info_outline, color: AppTheme.onSurface, size: 28),
                     onPressed: () {
@@ -606,10 +802,7 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
                             style: const TextStyle(fontSize: 14, height: 1.4),
                           ),
                           actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('OK'),
-                            ),
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
                           ],
                         ),
                       );
@@ -623,63 +816,27 @@ class _CameraStudioScreenState extends ConsumerState<CameraStudioScreen> {
       ),
     );
   }
-
-  Widget _buildTelemetryChip(IconData icon, String label, String value, Color accent) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceContainerLowest.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.outlineVariant),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: accent),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'JetBrains Mono',
-              fontSize: 10,
-              color: AppTheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: 'JetBrains Mono',
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: accent,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-class _CameraHudPainter extends CustomPainter {
+/// Clean, Human-Friendly Head & Shoulders Silhouette Viewfinder Painter.
+/// Replaces the confusing nested circles with an unmistakable passport booth silhouette.
+class _HeadAndShouldersViewfinderPainter extends CustomPainter {
   final double specAspect;
-  final double headRatioMin;
-  final double headRatioMax;
+  final BiometricGuidanceState guidanceState;
 
-  _CameraHudPainter({
+  _HeadAndShouldersViewfinderPainter({
     required this.specAspect,
-    required this.headRatioMin,
-    required this.headRatioMax,
+    required this.guidanceState,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     // 1. Calculate the aspect-ratio frame box
-    double frameW = size.width * 0.88;
+    double frameW = size.width * 0.86;
     double frameH = frameW / specAspect;
 
-    if (frameH > size.height * 0.88) {
-      frameH = size.height * 0.88;
+    if (frameH > size.height * 0.86) {
+      frameH = size.height * 0.86;
       frameW = frameH * specAspect;
     }
 
@@ -697,16 +854,17 @@ class _CameraHudPainter extends CustomPainter {
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(path, maskPaint);
 
-    // 3. Draw Outer Border & Gold Corner Registration Marks
+    // 3. Draw Outer Border & Corner Registration Marks
     final borderPaint = Paint()
-      ..color = AppTheme.secondary
-      ..strokeWidth = 2.0
+      ..color = guidanceState.color.withValues(alpha: guidanceState.isReady ? 0.9 : 0.4)
+      ..strokeWidth = guidanceState.isReady ? 2.5 : 1.5
       ..style = PaintingStyle.stroke;
 
     canvas.drawRect(frameRect, borderPaint);
 
+    // Corner brackets
     final cornerPaint = Paint()
-      ..color = const Color(0xFFD4AF37)
+      ..color = guidanceState.isReady ? AppTheme.tertiary : const Color(0xFFD4AF37)
       ..strokeWidth = 3.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.square;
@@ -725,54 +883,68 @@ class _CameraHudPainter extends CustomPainter {
     canvas.drawLine(Offset(frameRect.right - cornerLen, frameRect.bottom), Offset(frameRect.right, frameRect.bottom), cornerPaint);
     canvas.drawLine(Offset(frameRect.right, frameRect.bottom), Offset(frameRect.right, frameRect.bottom - cornerLen), cornerPaint);
 
-    // 4. Biometric Guidelines:
-    final targetHeadRatio = (headRatioMin + headRatioMax) / 2.0;
-    final crownY = frameRect.top + (frameH * 0.09);
-    final chinY = crownY + (frameH * targetHeadRatio);
-    final eyeY = crownY + (frameH * targetHeadRatio * 0.44);
+    // 4. Draw Natural Head & Shoulders Silhouette Contour
+    final silhouettePaint = Paint()
+      ..color = guidanceState.color
+      ..strokeWidth = guidanceState.isReady ? 3.0 : 2.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
-    final guidePaint = Paint()
-      ..color = AppTheme.tertiary
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
+    final double cx = frameRect.center.dx;
+    final double headCenterY = frameRect.top + (frameH * 0.42);
+    final double headRadiusX = frameW * 0.27;
+    final double headRadiusY = frameH * 0.29;
 
-    final dashPaint = Paint()
-      ..color = AppTheme.secondary.withValues(alpha: 0.8)
-      ..strokeWidth = 1.2
-      ..style = PaintingStyle.stroke;
-
-    // Crown dashed line
-    _drawDashedHorizontal(canvas, frameRect.left + 15, frameRect.right - 15, crownY, dashPaint);
-
-    // Eye Horizon Solid Line with center crosshair
-    canvas.drawLine(Offset(frameRect.left + 10, eyeY), Offset(frameRect.right - 10, eyeY), guidePaint);
-    canvas.drawLine(Offset(frameRect.center.dx, eyeY - 8), Offset(frameRect.center.dx, eyeY + 8), guidePaint);
-
-    // Chin dashed line
-    _drawDashedHorizontal(canvas, frameRect.left + 15, frameRect.right - 15, chinY, dashPaint);
-
-    // Biometric Head Oval
-    final headOvalRect = Rect.fromCenter(
-      center: Offset(frameRect.center.dx, (crownY + chinY) / 2),
-      width: frameW * 0.58,
-      height: chinY - crownY,
+    // Head Oval
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(cx, headCenterY),
+        width: headRadiusX * 2,
+        height: headRadiusY * 2,
+      ),
+      silhouettePaint,
     );
-    canvas.drawOval(headOvalRect, dashPaint);
-  }
 
-  void _drawDashedHorizontal(Canvas canvas, double x1, double x2, double y, Paint paint) {
-    const dashW = 6.0;
-    const spaceW = 4.0;
-    double startX = x1;
-    while (startX < x2) {
-      canvas.drawLine(Offset(startX, y), Offset(math.min(startX + dashW, x2), y), paint);
-      startX += dashW + spaceW;
-    }
+    // Shoulders & Collar Contour Path
+    final shoulderPath = Path();
+    final double chinY = headCenterY + headRadiusY;
+    final double neckTopY = chinY + (frameH * 0.02);
+    final double neckBottomY = chinY + (frameH * 0.08);
+    final double neckHalfW = frameW * 0.11;
+
+    // Left Neck to Shoulder
+    shoulderPath.moveTo(cx - neckHalfW, neckTopY);
+    shoulderPath.lineTo(cx - neckHalfW, neckBottomY);
+    shoulderPath.quadraticBezierTo(
+      cx - frameW * 0.25,
+      neckBottomY + (frameH * 0.02),
+      frameRect.left + (frameW * 0.05),
+      frameRect.bottom - 4,
+    );
+
+    // Right Neck to Shoulder
+    shoulderPath.moveTo(cx + neckHalfW, neckTopY);
+    shoulderPath.lineTo(cx + neckHalfW, neckBottomY);
+    shoulderPath.quadraticBezierTo(
+      cx + frameW * 0.25,
+      neckBottomY + (frameH * 0.02),
+      frameRect.right - (frameW * 0.05),
+      frameRect.bottom - 4,
+    );
+
+    canvas.drawPath(shoulderPath, silhouettePaint);
+
+    // Subtle Eye Horizon Reference Line (single thin line with center crosshair)
+    final eyePaint = Paint()
+      ..color = guidanceState.color.withValues(alpha: 0.5)
+      ..strokeWidth = 1.0;
+    final double eyeY = headCenterY - (headRadiusY * 0.12);
+    canvas.drawLine(Offset(cx - headRadiusX * 0.7, eyeY), Offset(cx + headRadiusX * 0.7, eyeY), eyePaint);
+    canvas.drawLine(Offset(cx, eyeY - 6), Offset(cx, eyeY + 6), eyePaint);
   }
 
   @override
-  bool shouldRepaint(covariant _CameraHudPainter oldDelegate) =>
-      oldDelegate.specAspect != specAspect ||
-      oldDelegate.headRatioMin != headRatioMin ||
-      oldDelegate.headRatioMax != headRatioMax;
+  bool shouldRepaint(covariant _HeadAndShouldersViewfinderPainter oldDelegate) =>
+      oldDelegate.guidanceState != guidanceState || oldDelegate.specAspect != specAspect;
 }
