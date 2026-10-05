@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test @imgly</title>
+</head>
+<body>
+  <h1>Testing @imgly background removal...</h1>
+  <div id="status">Loading...</div>
+  <script type="module">
+    try {
+      document.getElementById('status').innerText = 'Importing @imgly module...';
+      const { removeBackground } = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.8/+esm');
+      document.getElementById('status').innerText = '@imgly imported successfully! Function ready: ' + (typeof removeBackground);
+      window._imglyReady = true;
+      window.removeBackground = removeBackground;
+      console.log('Imgly ready!');
+    } catch (e) {
+      document.getElementById('status').innerText = 'Error: ' + e;
+      console.error(e);
+    }
+  </script>
+</body>
+</html>
