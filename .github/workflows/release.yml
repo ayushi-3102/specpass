@@ -75,17 +75,17 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build iOS Release (Simulator / Test Package)
-        run: flutter build ios --release --no-codesign
+      - name: Build iOS Simulator Bundle
+        run: flutter build ios --simulator --release
 
-      - name: Package iOS App
+      - name: Package iOS Simulator App
         run: |
-          mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r SpecPass-iOS.ipa Payload
+          cd build/ios/iphonesimulator
+          zip -r ../../../SpecPass-iOS-Simulator.zip Runner.app
+          cd ../../..
 
       - name: Upload iOS Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SpecPass-iOS-Package
-          path: SpecPass-iOS.ipa
+          name: SpecPass-iOS-Simulator
+          path: SpecPass-iOS-Simulator.zip
