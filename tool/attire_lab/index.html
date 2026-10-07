@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpecPass • Executive Attire & Blazer Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-canvas: #080F1E;
+      --bg-surface: #0C192E;
+      --bg-card: #11213D;
+      --bg-card-hover: #152747;
+      --border-subtle: #1E3458;
+      --border-active: #D4AF37;
+      --text-main: #EDF2F9;
+      --text-muted: #94A3B8;
+      --gold-seal: #D4AF37;
+      --gold-glow: rgba(212, 175, 55, 0.25);
+      --sapphire: #2563EB;
+      --emerald: #10B981;
+      --danger: #EF4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #1E3A8A, #0C192E);
+      border: 1px solid var(--gold-seal);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .brand-title {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.5px;
+      color: #FFFFFF;
+    }
+    .brand-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--gold-seal);
+      background: rgba(212, 175, 55, 0.12);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      font-weight: 700;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--emerald);
+      background: rgba(16, 185, 129, 0.1);
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .workspace-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .viewport-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .viewport-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .view-modes {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-card);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+    }
+    .view-mode-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .view-mode-btn.active {
+      background: var(--sapphire);
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+    }
+
+    .stage-container {
+      position: relative;
+      width: 480px;
+      height: 600px;
+      max-width: 100%;
+      background: #000000;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .split-slider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--gold-seal);
+      box-shadow: 0 0 10px rgba(212, 175, 55, 0.8);
+      cursor: ew-resize;
+      z-index: 20;
+      display: none;
+    }
+    .split-slider-handle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--gold-seal);
+      color: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+      border: 2px solid #FFFFFF;
+    }
+
+    .upload-banner {
+      width: 100%;
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .upload-btn {
+      flex: 1;
+      background: var(--bg-card);
+      border: 1px dashed var(--gold-seal);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      transition: all 0.2s;
+    }
+    .upload-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: #FFFFFF;
+    }
+    .sample-btn {
+      background: rgba(212, 175, 55, 0.12);
+      border: 1px solid var(--gold-seal);
+      color: var(--gold-seal);
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .sample-btn:hover {
+      background: var(--gold-seal);
+      color: #000000;
+    }
+
+    /* Controls Sidebar */
+    .controls-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .control-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--gold-seal);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Attire Grid */
+    .attire-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .attire-item {
+      background: var(--bg-card);
+      border: 2px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .attire-item:hover {
+      border-color: var(--sapphire);
+      background: var(--bg-card-hover);
+    }
+    .attire-item.active {
+      border-color: var(--gold-seal);
+      background: rgba(212, 175, 55, 0.08);
+      box-shadow: 0 0 12px var(--gold-glow);
+    }
+    .attire-thumb {
+      width: 100%;
+      height: 64px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #060B14;
+    }
+    .attire-name {
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      color: var(--text-main);
+      line-height: 1.2;
+    }
+    .attire-tag {
+      font-size: 8px;
+      color: var(--text-muted);
+    }
+
+    /* Sliders */
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .slider-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .slider-value {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--gold-seal);
+    }
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--bg-card);
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--gold-seal);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Background Picker */
+    .bg-row {
+      display: flex;
+      gap: 8px;
+    }
+    .bg-choice {
+      flex: 1;
+      padding: 8px 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .bg-choice.active {
+      border-color: var(--gold-seal);
+      color: var(--gold-seal);
+    }
+
+    .btn-action {
+      width: 100%;
+      background: linear-gradient(135deg, var(--gold-seal), #B8860B);
+      color: #000000;
+      border: none;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(212, 175, 55, 0.3);
+    }
+    .btn-action:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(212, 175, 55, 0.5);
+    }
+
+    .btn-secondary {
+      width: 100%;
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border-subtle);
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--text-muted);
+    }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">👔</div>
+      <div>
+        <div class="brand-title">SpecPass Executive Attire Lab</div>
+        <div class="brand-tag">BIOMETRIC COMPOSITING ENGINE 2.0</div>
+      </div>
+    </div>
+    <div class="status-badge">
+      <span class="status-dot"></span>
+      <span id="landmark-status">Ready • Upload Portrait</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: Stage & Canvas -->
+    <div class="workspace-panel">
+      <div class="viewport-card">
+        <div class="viewport-header">
+          <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+            <span>📸 Interactive Biometric Chamber</span>
+            <span id="dim-badge" style="font-size: 11px; font-family: 'JetBrains Mono'; color: var(--gold-seal); background: rgba(212, 175, 55, 0.1); padding: 2px 6px; border-radius: 4px;">600 × 600 px (300 DPI)</span>
+          </div>
+
+          <div class="view-modes">
+            <button class="view-mode-btn active" id="btn-mode-suit" onclick="setViewMode('suit')">Executive Suit</button>
+            <button class="view-mode-btn" id="btn-mode-split" onclick="setViewMode('split')">Split Compare</button>
+            <button class="view-mode-btn" id="btn-mode-orig" onclick="setViewMode('orig')">Original</button>
+            <button class="view-mode-btn" id="btn-mode-mesh" onclick="setViewMode('mesh')">Landmarks</button>
+          </div>
+        </div>
+
+        <div class="stage-container" id="stage">
+          <canvas id="main-canvas" width="600" height="600"></canvas>
+          <div class="split-slider" id="split-slider">
+            <div class="split-slider-handle">↔</div>
+          </div>
+        </div>
+
+        <div class="upload-banner">
+          <label class="upload-btn">
+            <span>📁 Upload Your Photo (JPG/PNG)</span>
+            <input type="file" id="file-input" accept="image/*" class="hidden">
+          </label>
+          <button class="sample-btn" onclick="loadSamplePortrait()">Try Sample Portrait</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Controls & Presets Sidebar -->
+    <div class="controls-panel">
+      <!-- 1. Wardrobe Selection -->
+      <div class="control-card">
+        <div class="card-title">
+          <span>👔 Executive Wardrobe</span>
+        </div>
+        <div class="attire-grid" id="attire-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- 2. Anatomical Micro-Fitting -->
+      <div class="control-card">
+        <div class="card-title">
+          <span>📐 Anatomical Precision Alignment</span>
+        </div>
+        <div class="slider-group">
+          <div class="slider-item">
+            <div class="slider-label">
+              <span>Collar Vertical Nudge (Y)</span>
+              <span class="slider-value" id="val-nudge-y">0 px</span>
+            </div>
+            <input type="range" id="slider-nudge-y" min="-60" max="60" value="0" oninput="updateCompositor()">
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-label">
+              <span>Collar Horizontal Nudge (X)</span>
+              <span class="slider-value" id="val-nudge-x">0 px</span>
+            </div>
+            <input type="range" id="slider-nudge-x" min="-40" max="40" value="0" oninput="updateCompositor()">
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-label">
+              <span>Shoulder Span & Breadth</span>
+              <span class="slider-value" id="val-scale">100%</span>
+            </div>
+            <input type="range" id="slider-scale" min="80" max="130" value="100" oninput="updateCompositor()">
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-label">
+              <span>Head Tilt Roll Angle</span>
+              <span class="slider-value" id="val-rotation">0.0°</span>
+            </div>
+            <input type="range" id="slider-rotation" min="-15" max="15" step="0.5" value="0" oninput="updateCompositor()">
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Photorealism & Physics Shading -->
+      <div class="control-card">
+        <div class="card-title">
+          <span>✨ 3D Depth & Realism Engine</span>
+        </div>
+        <div class="slider-group">
+          <div class="slider-item">
+            <div class="slider-label">
+              <span>Jawline Ambient Contact Shadow (AO)</span>
+              <span class="slider-value" id="val-shadow">35%</span>
+            </div>
+            <input type="range" id="slider-shadow" min="0" max="100" value="35" oninput="updateCompositor()">
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-label">
+              <span>Color & Lighting Harmonization</span>
+              <span class="slider-value" id="val-lighting">70%</span>
+            </div>
+            <input type="range" id="slider-lighting" min="0" max="100" value="70" oninput="updateCompositor()">
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-label" style="margin-bottom: 6px;">
+              <span>Background Wall Color</span>
+            </div>
+            <div class="bg-row">
+              <div class="bg-choice active" onclick="setBgColor('#FFFFFF', this)">Pure White</div>
+              <div class="bg-choice" onclick="setBgColor('#F0F0F0', this)">Light Gray</div>
+              <div class="bg-choice" onclick="setBgColor('#0C192E', this)">Navy</div>
+              <div class="bg-choice" onclick="setBgColor('original', this)">Original</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; display: flex; gap: 8px;">
+          <button class="btn-secondary" onclick="resetToAutoFit()">↺ Reset to AI Auto-Fit</button>
+        </div>
+      </div>
+
+      <!-- 4. Export -->
+      <button class="btn-action" onclick="downloadMasterPortrait()">
+        <span>💾 Download 300 DPI Executive Portrait</span>
+      </button>
+    </div>
+  </main>
+
+  <script>
+    // State
+    let userImage = null;
+    let currentAttireIndex = 0;
+    let currentViewMode = 'suit';
+    let targetBgColor = '#FFFFFF';
+    let splitPosition = 0.5; // 0.0 to 1.0
+    let isDraggingSplit = false;
+
+    // Biometric Landmarks
+    let landmarks = {
+      chinX: 300,
+      chinY: 340,
+      jawLeftX: 230,
+      jawRightX: 370,
+      jawWidth: 140,
+      eyeY: 240,
+      crownY: 120,
+      headHeight: 220,
+      faceCenterX: 300,
+      rollAngleDeg: 0,
+      hasFace: false
+    };
+
+    // Real Photographic Wardrobe Assets
+    const wardrobe = [
+      {
+        id: 'men_navy_real',
+        name: 'Diplomatic Navy',
+        tag: "Men's Studio Wool",
+        src: '/assets/attire/men_navy_real.png',
+        collarOffsetRatio: 0.18,
+        widthRatio: 2.7,
+        aspect: 320 / 278,
+        gender: 'men'
+      },
+      {
+        id: 'men_charcoal_real',
+        name: 'Charcoal Tie',
+        tag: "Men's Executive",
+        src: '/assets/attire/men_charcoal_real.png',
+        collarOffsetRatio: 0.16,
+        widthRatio: 2.7,
+        aspect: 322 / 400,
+        gender: 'men'
+      },
+      {
+        id: 'men_formal_tie',
+        name: 'Presidential Tie',
+        tag: "Men's Classic Silk",
+        src: '/assets/attire/men_formal_tie.png',
+        collarOffsetRatio: 0.14,
+        widthRatio: 2.8,
+        aspect: 753 / 1445,
+        gender: 'men'
+      },
+      {
+        id: 'men_black_real',
+        name: 'Black Formal',
+        tag: "Men's Business",
+        src: '/assets/attire/men_black_real.png',
+        collarOffsetRatio: 0.14,
+        widthRatio: 2.8,
+        aspect: 731 / 1000,
+        gender: 'men'
+      },
+      {
+        id: 'women_navy_real',
+        name: 'Executive Navy',
+        tag: "Women's Tailored",
+        src: '/assets/attire/women_navy_real.png',
+        collarOffsetRatio: 0.18,
+        widthRatio: 2.6,
+        aspect: 400 / 300,
+        gender: 'women'
+      },
+      {
+        id: 'women_blazer_hd',
+        name: 'Women Silk Blazer',
+        tag: "Women's High-Res",
+        src: '/assets/attire/suit_women_navy.png',
+        collarOffsetRatio: 0.15,
+        widthRatio: 2.7,
+        aspect: 896 / 1200,
+        gender: 'women'
+      }
+    ];
+
+    // Preloaded image cache
+    const suitImages = {};
+    wardrobe.forEach(item => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = item.src;
+      img.onload = () => {
+        suitImages[item.id] = img;
+        renderAttireGrid();
+        if (userImage) updateCompositor();
+      };
+    });
+
+    const canvas = document.getElementById('main-canvas');
+    const ctx = canvas.getContext('2d');
+    const stage = document.getElementById('stage');
+    const splitSlider = document.getElementById('split-slider');
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      renderAttireGrid();
+      setupSplitSlider();
+      loadSamplePortrait();
+    });
+
+    function renderAttireGrid() {
+      const grid = document.getElementById('attire-grid');
+      grid.innerHTML = '';
+      wardrobe.forEach((item, idx) => {
+        const el = document.createElement('div');
+        el.className = `attire-item ${idx === currentAttireIndex ? 'active' : ''}`;
+        el.onclick = () => selectAttire(idx);
+
+        const imgEl = document.createElement('img');
+        imgEl.className = 'attire-thumb';
+        imgEl.src = item.src;
+
+        el.appendChild(imgEl);
+        el.innerHTML += `
+          <div class="attire-name">${item.name}</div>
+          <div class="attire-tag">${item.tag}</div>
+        `;
+        grid.appendChild(el);
+      });
+    }
+
+    function selectAttire(idx) {
+      currentAttireIndex = idx;
+      renderAttireGrid();
+      updateCompositor();
+    }
+
+    // Load file
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          userImage = img;
+          analyzeFaceLandmarks(img);
+          resetToAutoFit();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function loadSamplePortrait() {
+      const img = new Image();
+      img.onload = () => {
+        userImage = img;
+        analyzeFaceLandmarks(img);
+        resetToAutoFit();
+      };
+      img.src = '/assets/images/sample_portrait.png';
+    }
+
+    // High-Precision Face & Landmark Geometry Detector
+    function analyzeFaceLandmarks(img) {
+      document.getElementById('landmark-status').innerText = 'Analyzing Biometric Landmarks...';
+
+      const off = document.createElement('canvas');
+      off.width = 400;
+      off.height = (img.height / img.width) * 400;
+      const oCtx = off.getContext('2d');
+      oCtx.drawImage(img, 0, 0, off.width, off.height);
+      const imgData = oCtx.getImageData(0, 0, off.width, off.height).data;
+
+      const skinXs = [];
+      const skinYs = [];
+
+      for (let y = 0; y < off.height; y += 3) {
+        for (let x = 0; x < off.width; x += 3) {
+          const idx = (y * off.width + x) * 4;
+          const r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
+
+          // Biometric skin locus
+          if (r > 60 && g > 40 && b > 20 && r > g && g >= (b - 8) && (r - g) > 12 && (Math.max(r,g,b) - Math.min(r,g,b)) > 15) {
+            skinXs.push(x);
+            skinYs.push(y);
+          }
+        }
+      }
+
+      if (skinXs.length > 50) {
+        skinXs.sort((a,b) => a - b);
+        skinYs.sort((a,b) => a - b);
+
+        const p15Y = skinYs[Math.floor(skinYs.length * 0.15)];
+        const p85Y = skinYs[Math.floor(skinYs.length * 0.85)];
+        const p15X = skinXs[Math.floor(skinXs.length * 0.15)];
+        const p85X = skinXs[Math.floor(skinXs.length * 0.85)];
+
+        const scaleW = 600 / off.width;
+        const scaleH = 600 / off.height;
+
+        landmarks.crownY = p15Y * scaleH;
+        landmarks.chinY = p85Y * scaleH;
+        landmarks.headHeight = Math.max(80, landmarks.chinY - landmarks.crownY);
+        landmarks.jawLeftX = p15X * scaleW;
+        landmarks.jawRightX = p85X * scaleW;
+        landmarks.jawWidth = Math.max(60, landmarks.jawRightX - landmarks.jawLeftX);
+        landmarks.faceCenterX = (landmarks.jawLeftX + landmarks.jawRightX) / 2;
+        landmarks.eyeY = landmarks.crownY + landmarks.headHeight * 0.42;
+        landmarks.hasFace = true;
+
+        document.getElementById('landmark-status').innerText = '✓ Biometric Fit Active';
+        document.getElementById('landmark-status').style.color = 'var(--emerald)';
+      } else {
+        landmarks.crownY = 140;
+        landmarks.chinY = 360;
+        landmarks.headHeight = 220;
+        landmarks.jawLeftX = 225;
+        landmarks.jawRightX = 375;
+        landmarks.jawWidth = 150;
+        landmarks.faceCenterX = 300;
+        landmarks.eyeY = 240;
+        landmarks.hasFace = false;
+        document.getElementById('landmark-status').innerText = 'Centered Fallback Active';
+      }
+    }
+
+    function resetToAutoFit() {
+      document.getElementById('slider-nudge-y').value = 0;
+      document.getElementById('slider-nudge-x').value = 0;
+      document.getElementById('slider-scale').value = 100;
+      document.getElementById('slider-rotation').value = 0;
+      document.getElementById('slider-shadow').value = 40;
+      document.getElementById('slider-lighting').value = 70;
+      updateCompositor();
+    }
+
+    function updateCompositor() {
+      const nudgeY = parseInt(document.getElementById('slider-nudge-y').value);
+      const nudgeX = parseInt(document.getElementById('slider-nudge-x').value);
+      const scalePct = parseInt(document.getElementById('slider-scale').value);
+      const rotationDeg = parseFloat(document.getElementById('slider-rotation').value);
+      const shadowPct = parseInt(document.getElementById('slider-shadow').value);
+      const lightingPct = parseInt(document.getElementById('slider-lighting').value);
+
+      document.getElementById('val-nudge-y').innerText = `${nudgeY > 0 ? '+' : ''}${nudgeY} px`;
+      document.getElementById('val-nudge-x').innerText = `${nudgeX > 0 ? '+' : ''}${nudgeX} px`;
+      document.getElementById('val-scale').innerText = `${scalePct}%`;
+      document.getElementById('val-rotation').innerText = `${rotationDeg > 0 ? '+' : ''}${rotationDeg.toFixed(1)}°`;
+      document.getElementById('val-shadow').innerText = `${shadowPct}%`;
+      document.getElementById('val-lighting').innerText = `${lightingPct}%`;
+
+      renderStage({
+        nudgeY,
+        nudgeX,
+        scale: scalePct / 100.0,
+        rotation: rotationDeg,
+        shadowOpacity: shadowPct / 100.0,
+        lighting: lightingPct / 100.0
+      });
+    }
+
+    function renderStage(params) {
+      if (!userImage) return;
+
+      ctx.clearRect(0, 0, 600, 600);
+
+      if (currentViewMode === 'orig') {
+        renderOriginal(ctx, 0, 0, 600, 600);
+      } else if (currentViewMode === 'suit') {
+        renderComposited(ctx, 0, 0, 600, 600, params);
+      } else if (currentViewMode === 'split') {
+        // Left side: Original
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, 600 * splitPosition, 600);
+        ctx.clip();
+        renderOriginal(ctx, 0, 0, 600, 600);
+        ctx.restore();
+
+        // Right side: Suit
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(600 * splitPosition, 0, 600 * (1 - splitPosition), 600);
+        ctx.clip();
+        renderComposited(ctx, 0, 0, 600, 600, params);
+        ctx.restore();
+
+        // Split line
+        ctx.strokeStyle = '#D4AF37';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(600 * splitPosition, 0);
+        ctx.lineTo(600 * splitPosition, 600);
+        ctx.stroke();
+      } else if (currentViewMode === 'mesh') {
+        renderComposited(ctx, 0, 0, 600, 600, params);
+        renderBiometricLandmarkMesh(ctx);
+      }
+    }
+
+    function renderOriginal(targetCtx, x, y, w, h) {
+      targetCtx.fillStyle = targetBgColor === 'original' ? '#000000' : targetBgColor;
+      targetCtx.fillRect(x, y, w, h);
+      targetCtx.drawImage(userImage, x, y, w, h);
+    }
+
+    function renderComposited(targetCtx, x, y, w, h, p) {
+      // 1. Draw Background
+      if (targetBgColor !== 'original') {
+        targetCtx.fillStyle = targetBgColor;
+        targetCtx.fillRect(x, y, w, h);
+      }
+
+      // 2. Draw User Portrait (Head, Real Neck, & Shoulders)
+      targetCtx.drawImage(userImage, x, y, w, h);
+
+      // 3. Draw Real Photographic Studio Attire
+      const attire = wardrobe[currentAttireIndex];
+      const suitImg = suitImages[attire.id];
+
+      if (!suitImg || !suitImg.complete || suitImg.naturalWidth === 0) {
+        return; // wait for load
+      }
+
+      const anchorX = landmarks.faceCenterX + p.nudgeX;
+      const anchorY = landmarks.chinY - 12 + p.nudgeY;
+
+      // Realistic scale based on detected head width
+      const targetSuitWidth = landmarks.jawWidth * attire.widthRatio * p.scale;
+      const targetSuitHeight = targetSuitWidth / attire.aspect;
+
+      targetCtx.save();
+      targetCtx.translate(anchorX, anchorY);
+      targetCtx.rotate(p.rotation * Math.PI / 180.0);
+
+      // Draw real photographic studio suit
+      targetCtx.drawImage(
+        suitImg,
+        -targetSuitWidth / 2,
+        0,
+        targetSuitWidth,
+        targetSuitHeight
+      );
+
+      // 4. Contact Shadow (Ambient Occlusion under Chin)
+      // Connects real human neck and chin to the shirt collar
+      if (p.shadowOpacity > 0.01) {
+        const shadowGrad = targetCtx.createRadialGradient(
+          0, 8, 2,
+          0, 20, landmarks.jawWidth * 0.55
+        );
+        shadowGrad.addColorStop(0, `rgba(0, 0, 0, ${p.shadowOpacity * 0.9})`);
+        shadowGrad.addColorStop(0.45, `rgba(0, 0, 0, ${p.shadowOpacity * 0.45})`);
+        shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        targetCtx.fillStyle = shadowGrad;
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 16, landmarks.jawWidth * 0.5, 18 * p.scale, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+
+      targetCtx.restore();
+    }
+
+    // Biometric mesh overlay
+    function renderBiometricLandmarkMesh(targetCtx) {
+      targetCtx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
+      targetCtx.fillStyle = 'rgba(16, 185, 129, 0.85)';
+      targetCtx.lineWidth = 1.5;
+
+      // Chin point
+      targetCtx.beginPath();
+      targetCtx.arc(landmarks.faceCenterX, landmarks.chinY, 5, 0, Math.PI * 2);
+      targetCtx.fill();
+      targetCtx.fillText('Chin Anchor', landmarks.faceCenterX + 10, landmarks.chinY + 4);
+
+      // Jaw horizon
+      targetCtx.beginPath();
+      targetCtx.moveTo(landmarks.jawLeftX, landmarks.chinY - 20);
+      targetCtx.lineTo(landmarks.jawRightX, landmarks.chinY - 20);
+      targetCtx.stroke();
+      targetCtx.fillText(`Jaw Width: ${landmarks.jawWidth.toFixed(0)}px`, landmarks.faceCenterX - 45, landmarks.chinY - 26);
+
+      // Eye horizon
+      targetCtx.strokeStyle = 'rgba(59, 130, 246, 0.85)';
+      targetCtx.fillStyle = 'rgba(59, 130, 246, 0.85)';
+      targetCtx.beginPath();
+      targetCtx.moveTo(landmarks.jawLeftX - 30, landmarks.eyeY);
+      targetCtx.lineTo(landmarks.jawRightX + 30, landmarks.eyeY);
+      targetCtx.stroke();
+      targetCtx.fillText('Eye Horizon', landmarks.jawLeftX - 25, landmarks.eyeY - 6);
+    }
+
+    function setViewMode(mode) {
+      currentViewMode = mode;
+      document.querySelectorAll('.view-mode-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(`btn-mode-${mode}`).classList.add('active');
+
+      splitSlider.style.display = mode === 'split' ? 'block' : 'none';
+      if (mode === 'split') {
+        updateSplitSliderPosition();
+      }
+      updateCompositor();
+    }
+
+    function setBgColor(hex, el) {
+      targetBgColor = hex;
+      document.querySelectorAll('.bg-choice').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      updateCompositor();
+    }
+
+    function setupSplitSlider() {
+      let isDraggingSuit = false;
+      let lastMouseX = 0;
+      let lastMouseY = 0;
+
+      const onMove = (clientX) => {
+        const rect = stage.getBoundingClientRect();
+        splitPosition = Math.max(0.05, Math.min(0.95, (clientX - rect.left) / rect.width));
+        updateSplitSliderPosition();
+        updateCompositor();
+      };
+
+      stage.addEventListener('mousedown', (e) => {
+        if (currentViewMode === 'split') {
+          isDraggingSplit = true;
+          onMove(e.clientX);
+        } else {
+          isDraggingSuit = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (isDraggingSplit) {
+          onMove(e.clientX);
+        } else if (isDraggingSuit) {
+          const dx = e.clientX - lastMouseX;
+          const dy = e.clientY - lastMouseY;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+
+          const sliderX = document.getElementById('slider-nudge-x');
+          const sliderY = document.getElementById('slider-nudge-y');
+          sliderX.value = parseInt(sliderX.value) + dx;
+          sliderY.value = parseInt(sliderY.value) + dy;
+          updateCompositor();
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDraggingSplit = false;
+        isDraggingSuit = false;
+      });
+
+      // Mouse Wheel to scale suit width smoothly
+      stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const sliderScale = document.getElementById('slider-scale');
+        const currentScale = parseInt(sliderScale.value);
+        const delta = e.deltaY < 0 ? 2 : -2;
+        sliderScale.value = Math.max(80, Math.min(140, currentScale + delta));
+        updateCompositor();
+      }, { passive: false });
+
+      // Touch support
+      stage.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          if (currentViewMode === 'split') {
+            isDraggingSplit = true;
+            onMove(e.touches[0].clientX);
+          } else {
+            isDraggingSuit = true;
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+          }
+        }
+      });
+
+      window.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1) {
+          if (isDraggingSplit) {
+            onMove(e.touches[0].clientX);
+          } else if (isDraggingSuit) {
+            const dx = e.touches[0].clientX - lastMouseX;
+            const dy = e.touches[0].clientY - lastMouseY;
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+
+            const sliderX = document.getElementById('slider-nudge-x');
+            const sliderY = document.getElementById('slider-nudge-y');
+            sliderX.value = parseInt(sliderX.value) + dx;
+            sliderY.value = parseInt(sliderY.value) + dy;
+            updateCompositor();
+          }
+        }
+      });
+
+      window.addEventListener('touchend', () => {
+        isDraggingSplit = false;
+        isDraggingSuit = false;
+      });
+    }
+
+    function updateSplitSliderPosition() {
+      splitSlider.style.left = `${splitPosition * 100}%`;
+    }
+
+    function downloadMasterPortrait() {
+      const link = document.createElement('a');
+      link.download = `specpass_executive_${wardrobe[currentAttireIndex].id}.jpg`;
+      link.href = canvas.toDataURL('image/jpeg', 0.98);
+      link.click();
+    }
+  </script>
+</body>
+</html>
